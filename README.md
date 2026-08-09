@@ -38,8 +38,29 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 ## O que NÃO tem ainda
 
 - **Tempo real entre dispositivos**: cada pessoa que abre o link vê o roteiro publicado, mas marcar "Gravar" é local àquela aba — a equipe não vê o progresso uma da outra em tempo real.
-- **Link funcional fora da sua rede**: o link (`http://localhost:3000/e/...`) só abre em quem tiver acesso a essa máquina/rede. O banco (Supabase) já é externo e persistente, então falta só hospedar o site em algum lugar público (ex: Render free tier) — isso ainda não foi feito.
+- **Link funcional fora da sua rede**: o link (`http://localhost:3000/e/...`) só abre em quem tiver acesso a essa máquina/rede, até você fazer o deploy (veja abaixo).
 - **Login e edição de evento já publicado** (pra editar, é preciso gerar/publicar de novo).
+
+## Deploy no Render (pra o link funcionar fora da sua rede)
+
+O projeto já está pronto pra isso (`render.yaml`, `git init` feito, primeiro commit local já criado). Faltam só as partes que só você pode fazer — criar contas e conectar — eu não tenho como fazer isso por você:
+
+1. **Crie um repositório no GitHub** (github.com → New repository, pode ser privado) e copie a URL dele (ex: `https://github.com/seu-usuario/captura-checklist.git`).
+2. **Conecte e suba o código** (rode no terminal, dentro da pasta do projeto):
+   ```bash
+   git remote add origin https://github.com/SEU-USUARIO/SEU-REPO.git
+   ```
+   ```bash
+   git push -u origin master
+   ```
+3. **Crie uma conta no Render** em [render.com](https://render.com) (sem cartão de crédito no plano free) e conecte sua conta do GitHub.
+4. No painel do Render, clique em **New → Blueprint**, selecione o repositório que você acabou de subir. O Render vai ler o `render.yaml` e configurar o serviço sozinho (nome, comandos de build/start, plano free).
+5. Ele vai pedir pra você preencher 3 variáveis de ambiente (não vêm do arquivo por segurança) — copie os mesmos valores do seu `.env` local:
+   - `GEMINI_API_KEY`
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+6. Clique em **Deploy**. Em alguns minutos o Render te dá uma URL pública (tipo `https://captura-checklist.onrender.com`) — é esse domínio que substitui o `localhost:3000` pra todo mundo da equipe.
+7. Lembrete do plano free: se ninguém acessar por 15 minutos, o serviço "dorme" e o próximo acesso demora uns 30-50s pra responder (depois volta ao normal). A IA e o banco não têm esse problema, é só o servidor "acordando".
 
 ## Estrutura do projeto
 
