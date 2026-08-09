@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTURA — Um Dia de Lívia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #12141c;
+    --bg-soft: #171a24;
+    --surface: #1c1f2b;
+    --surface-2: #242838;
+    --border: rgba(255,255,255,0.09);
+    --border-strong: rgba(255,255,255,0.22);
+    --text: #f4f2ec;
+    --text-muted: #9297a8;
+    --text-faint: #666c7e;
+    --rec: #ff3b4e;
+    --rec-soft: rgba(255,59,78,0.14);
+    --amber: #ffb020;
+    --green: #33d17a;
+    --green-soft: rgba(51,209,122,0.14);
+    --danger: #ff5470;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-body: 'Inter', sans-serif;
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(255,59,78,0.10), transparent 60%),
+      radial-gradient(ellipse 900px 500px at 90% 0%, rgba(255,176,32,0.08), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--font-body);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--rec); color:#fff;}
+  button{font-family:inherit;}
+  a{color:inherit;}
+  :focus-visible{outline:2px solid var(--amber); outline-offset:2px; border-radius:4px;}
+
+  .sprite{position:absolute; width:0; height:0; overflow:hidden;}
+  .icon{width:18px; height:18px; stroke:currentColor; stroke-width:1.6; fill:none; stroke-linecap:round; stroke-linejoin:round; display:block;}
+
+  /* ---------- HEADER ---------- */
+  .topbar{position:sticky; top:0; z-index:40; background:rgba(18,20,28,0.86); backdrop-filter:blur(14px); border-bottom:1px solid var(--border);}
+  .topbar-inner{max-width:1180px; margin:0 auto; padding:18px 28px 16px;}
+  .brand-row{display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap;}
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand-mark{width:44px; height:44px; flex:0 0 auto;}
+  .brand-name{font-family:var(--font-display); font-weight:700; font-size:1.05rem; letter-spacing:0.06em; line-height:1;}
+  .brand-tag{font-family:var(--font-mono); font-size:0.68rem; color:var(--text-muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:4px;}
+
+  .live-clock{display:flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:0.78rem; color:var(--text-muted); background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:6px 12px 6px 10px;}
+  .live-dot{width:7px; height:7px; border-radius:50%; background:var(--rec); animation:pulseDot 1.6s ease-in-out infinite;}
+  @keyframes pulseDot{0%,100%{box-shadow:0 0 0 0 var(--rec-soft);} 50%{box-shadow:0 0 0 5px transparent;}}
+
+  .reset-btn{background:none; border:1px solid var(--border); color:var(--text-faint); font-family:var(--font-mono); font-size:0.68rem; letter-spacing:0.04em; padding:6px 10px; border-radius:999px; cursor:pointer; transition:.15s ease;}
+  .reset-btn:hover{border-color:var(--border-strong); color:var(--text-muted);}
+  .reset-btn.confirming{border-color:var(--danger); color:var(--danger);}
+
+  .event-title-row{margin-top:18px;}
+  .event-label{font-family:var(--font-mono); font-size:0.68rem; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:6px; display:block;}
+  .event-input{width:100%; background:transparent; border:none; border-bottom:1px solid transparent; font-family:var(--font-display); font-weight:700; font-size:clamp(1.3rem,3.4vw,1.9rem); color:var(--text); padding:2px 0 6px; transition:.15s ease;}
+  .event-input:hover{border-bottom-color:var(--border);}
+  .event-input:focus{outline:none; border-bottom-color:var(--amber);}
+  .event-sub{font-family:var(--font-mono); font-size:0.72rem; color:var(--text-faint); margin-top:4px;}
+
+  .progress-wrap{margin-top:18px;}
+  .progress-meta{display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:8px; flex-wrap:wrap;}
+  .progress-count{font-family:var(--font-mono); font-size:0.82rem; color:var(--text-muted);}
+  .progress-count b{color:var(--text); font-weight:600;}
+  .progress-pct{font-family:var(--font-mono); font-size:0.82rem; color:var(--amber);}
+  .progress-track{position:relative; height:10px; border-radius:999px; background:var(--surface-2); border:1px solid var(--border); overflow:hidden;}
+  .progress-fill{height:100%; width:0%; border-radius:999px; background:linear-gradient(90deg, var(--rec), var(--amber)); transition:width .5s cubic-bezier(.4,0,.2,1); position:relative;}
+  .progress-track::after{content:''; position:absolute; inset:0; background:repeating-linear-gradient(90deg, transparent 0 22px, rgba(0,0,0,0.28) 22px 23px); pointer-events:none;}
+
+  .phase-nav{display:flex; gap:8px; margin-top:16px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none;}
+  .phase-nav::-webkit-scrollbar{display:none;}
+  .phase-pill{flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; border:1px solid var(--border); background:var(--surface); text-decoration:none; color:var(--text-muted); font-family:var(--font-mono); font-size:0.74rem; white-space:nowrap; transition:.15s ease;}
+  .phase-pill .icon{width:14px; height:14px;}
+  .phase-pill:hover{border-color:var(--border-strong); color:var(--text);}
+  .phase-pill b{color:var(--text); font-family:var(--font-mono); font-weight:600;}
+  .phase-pill.done{border-color:rgba(51,209,122,0.4); color:var(--green);}
+  .phase-pill.done b{color:var(--green);}
+
+  /* ---------- GOLDEN RULE ---------- */
+  main{max-width:1180px; margin:0 auto; padding:32px 28px 80px;}
+  .golden-rule{background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--amber); border-radius:0 var(--radius) var(--radius) 0; padding:16px 20px; margin-bottom:36px; display:flex; gap:14px; align-items:flex-start;}
+  .golden-rule .gr-icon{color:var(--amber); flex:0 0 auto; margin-top:2px; width:20px; height:20px;}
+  .golden-rule b{font-family:var(--font-display); display:block; margin-bottom:4px; font-size:0.92rem;}
+  .golden-rule p{margin:0; font-size:0.85rem; color:var(--text-muted); line-height:1.6;}
+
+  /* ---------- PHASES ---------- */
+  .phase{margin-bottom:52px; scroll-margin-top:230px;}
+  .phase-header{display:flex; align-items:center; gap:14px; margin-bottom:22px; padding-bottom:14px; border-bottom:1px solid var(--border);}
+  .phase-icon{width:38px; height:38px; border-radius:10px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; background:var(--surface); border:1px solid var(--border); color:var(--amber);}
+  .phase-icon .icon{width:19px; height:19px;}
+  .phase-titles{flex:1 1 auto; min-width:0;}
+  .phase-eyebrow{font-family:var(--font-mono); font-size:0.68rem; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.12em;}
+  .phase-name{font-family:var(--font-display); font-weight:700; font-size:1.25rem; margin-top:2px;}
+  .phase-count{font-family:var(--font-mono); font-size:0.8rem; color:var(--text-muted); flex:0 0 auto;}
+  .phase-count b{color:var(--text);}
+
+  .cards-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(340px,1fr)); gap:20px;}
+
+  /* ---------- CARD ---------- */
+  .card{position:relative; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px 20px 20px; transition:border-color .25s ease, background .25s ease;}
+  .vf-corner{position:absolute; width:16px; height:16px; border-color:var(--border-strong); transition:border-color .3s ease, opacity .3s ease;}
+  .vf-corner.tl{top:8px; left:8px; border-top:2px solid; border-left:2px solid; border-radius:4px 0 0 0;}
+  .vf-corner.tr{top:8px; right:8px; border-top:2px solid; border-right:2px solid; border-radius:0 4px 0 0;}
+  .vf-corner.bl{bottom:8px; left:8px; border-bottom:2px solid; border-left:2px solid; border-radius:0 0 0 4px;}
+  .vf-corner.br{bottom:8px; right:8px; border-bottom:2px solid; border-right:2px solid; border-radius:0 0 4px 0;}
+
+  .card-top{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;}
+  .card-icon-wrap{display:flex; align-items:center; gap:10px; min-width:0;}
+  .card-icon{width:34px; height:34px; border-radius:9px; flex:0 0 auto; background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-muted);}
+  .card.is-done .card-icon{color:var(--green); border-color:rgba(51,209,122,0.35);}
+
+  .status-indicator{position:relative; width:16px; height:16px; flex:0 0 auto;}
+  .dot{position:absolute; inset:0; margin:auto; width:9px; height:9px; border-radius:50%; background:var(--rec); top:3.5px; left:3.5px; animation:pulseDot2 1.7s ease-in-out infinite;}
+  @keyframes pulseDot2{0%,100%{box-shadow:0 0 0 0 rgba(255,59,78,0.35);} 50%{box-shadow:0 0 0 6px rgba(255,59,78,0);}}
+  .check{display:none; align-items:center; justify-content:center; position:absolute; inset:0; color:var(--green);}
+  .check .icon{width:16px; height:16px; stroke-width:2.4;}
+  .card.is-done .dot{display:none;}
+  .card.is-done .check{display:flex;}
+
+  .card-title{font-family:var(--font-display); font-weight:700; font-size:1.02rem; margin:0 0 14px;}
+
+  .time-row{display:flex; gap:10px; margin-bottom:14px;}
+  .time-box{flex:1 1 0; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:9px 12px;}
+  .time-label{font-family:var(--font-mono); font-size:0.62rem; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.08em; display:block; margin-bottom:3px;}
+  .time-value{font-family:var(--font-mono); font-size:0.9rem; font-weight:500; color:var(--text);}
+  .time-box.deadline .time-value{color:var(--amber);}
+
+  .capture-list{list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:5px;}
+  .capture-list li{font-size:0.83rem; color:var(--text-muted); padding-left:14px; position:relative; line-height:1.4;}
+  .capture-list li::before{content:''; position:absolute; left:0; top:0.55em; width:5px; height:5px; border-radius:50%; background:var(--text-faint);}
+
+  .speech-box{background:var(--bg-soft); border:1px solid var(--border); border-left:2px solid var(--amber); border-radius:0 var(--radius-sm) var(--radius-sm) 0; padding:10px 14px; margin-bottom:16px;}
+  .speech-label{font-family:var(--font-mono); font-size:0.62rem; color:var(--amber); text-transform:uppercase; letter-spacing:0.08em; display:block; margin-bottom:5px;}
+  .speech-text{font-family:var(--font-mono); font-size:0.78rem; color:#dcdae4; font-style:italic; line-height:1.6;}
+
+  .rules-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px;}
+  .rules-col{border-radius:var(--radius-sm); padding:11px 12px; border:1px solid var(--border);}
+  .rules-col.full{grid-column:1 / -1;}
+  .rules-col.can{background:var(--green-soft); border-color:rgba(51,209,122,0.28);}
+  .rules-col.cannot{background:var(--rec-soft); border-color:rgba(255,59,78,0.28);}
+  .rules-title{display:flex; align-items:center; gap:5px; font-family:var(--font-mono); font-size:0.64rem; text-transform:uppercase; letter-spacing:0.07em; margin-bottom:7px; font-weight:600;}
+  .rules-col.can .rules-title{color:var(--green);}
+  .rules-col.cannot .rules-title{color:var(--danger);}
+  .rules-col .icon{width:12px; height:12px; stroke-width:2.4;}
+  .rules-col ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
+  .rules-col li{font-size:0.74rem; color:var(--text-muted); line-height:1.4;}
+
+  .record-btn{width:100%; display:flex; align-items:center; justify-content:center; gap:9px; background:transparent; border:1.5px solid var(--rec); color:var(--rec); font-family:var(--font-mono); font-weight:600; font-size:0.82rem; letter-spacing:0.03em; padding:11px 14px; border-radius:var(--radius-sm); cursor:pointer; transition:.18s ease;}
+  .record-btn:hover{background:var(--rec-soft);}
+  .record-btn .rec-icon{width:9px; height:9px; border-radius:50%; background:var(--rec); flex:0 0 auto;}
+  .card.is-done .record-btn{border-color:var(--green); color:var(--green); background:var(--green-soft);}
+  .card.is-done .record-btn .rec-icon{background:var(--green); border-radius:2px;}
+
+  .captured-stamp{display:none; align-items:center; gap:6px; position:absolute; top:-10px; right:16px; background:var(--green); color:#0c1710; font-family:var(--font-mono); font-weight:600; font-size:0.63rem; padding:4px 9px; border-radius:999px; letter-spacing:0.03em; box-shadow:0 4px 14px rgba(51,209,122,0.35);}
+  .card.is-done .captured-stamp{display:flex;}
+  .card.is-done{border-color:rgba(51,209,122,0.35); background:linear-gradient(180deg, rgba(51,209,122,0.05), var(--surface) 40%);}
+  .card.is-done .vf-corner{border-color:var(--green);}
+
+  /* ---------- MISSIONS ---------- */
+  .missions-section{margin-top:8px; padding-top:38px; border-top:1px solid var(--border);}
+  .missions-head{margin-bottom:22px;}
+  .missions-title{font-family:var(--font-display); font-weight:700; font-size:1.25rem; margin-top:2px;}
+  .missions-sub{font-family:var(--font-mono); font-size:0.76rem; color:var(--text-muted); margin-top:6px;}
+  .missions-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:16px;}
+  .mission-cat{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 16px 14px;}
+  .mission-cat-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:8px;}
+  .mission-cat-label{display:flex; align-items:center; gap:8px; font-family:var(--font-display); font-weight:600; font-size:0.86rem;}
+  .mission-cat-count{font-family:var(--font-mono); font-size:0.7rem; color:var(--text-muted); white-space:nowrap;}
+  .mission-chips{display:flex; flex-wrap:wrap; gap:7px;}
+  .mission-chip{background:var(--surface-2); border:1px solid var(--border); color:var(--text-muted); font-size:0.74rem; padding:6px 11px; border-radius:999px; cursor:pointer; transition:.15s ease;}
+  .mission-chip:hover{border-color:var(--border-strong); color:var(--text);}
+  .mission-chip.done{background:var(--green-soft); border-color:rgba(51,209,122,0.4); color:var(--green); text-decoration:line-through; text-decoration-color:rgba(51,209,122,0.55);}
+
+  /* ---------- COMPLETION BANNER ---------- */
+  .completion-banner{position:fixed; left:50%; bottom:22px; transform:translate(-50%,140%); z-index:60; width:min(92vw,480px); background:linear-gradient(135deg, #182a1f, var(--surface)); border:1px solid rgba(51,209,122,0.4); border-radius:18px; padding:18px 22px; display:flex; align-items:center; gap:14px; box-shadow:0 20px 60px rgba(0,0,0,0.45); transition:transform .5s cubic-bezier(.34,1.56,.64,1);}
+  .completion-banner.visible{transform:translate(-50%,0);}
+  .completion-badge{width:46px; height:46px; border-radius:50%; background:var(--green-soft); border:1px solid rgba(51,209,122,0.5); display:flex; align-items:center; justify-content:center; flex:0 0 auto; color:var(--green); animation:ringPulse 2s ease-in-out infinite;}
+  @keyframes ringPulse{0%,100%{box-shadow:0 0 0 0 rgba(51,209,122,0.3);} 50%{box-shadow:0 0 0 8px rgba(51,209,122,0);}}
+  .completion-badge .icon{width:22px; height:22px; stroke-width:2.6;}
+  .completion-text b{font-family:var(--font-display); font-size:0.95rem; display:block;}
+  .completion-text span{font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted);}
+
+  footer{max-width:1180px; margin:0 auto; padding:0 28px 50px; color:var(--text-faint); font-family:var(--font-mono); font-size:0.7rem; text-align:center;}
+
+  @media (prefers-reduced-motion: reduce){*{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important;}}
+
+  @media (max-width:640px){
+    .topbar-inner{padding:14px 16px 14px;}
+    main{padding:24px 16px 70px;}
+    .brand-row{gap:10px;}
+    .brand-name{font-size:0.92rem;}
+    .cards-grid{grid-template-columns:1fr; gap:16px;}
+    .missions-grid{grid-template-columns:1fr;}
+    .rules-grid{grid-template-columns:1fr;}
+    .phase-name{font-size:1.08rem;}
+    .card{padding:18px 16px 16px;}
+    .completion-banner{padding:14px 16px; bottom:14px;}
+    .live-clock{font-size:0.7rem; padding:5px 10px 5px 8px;}
+    .golden-rule{padding:14px 16px;}
+  }
+</style>
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true">
+  <symbol id="icon-check" viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></symbol>
+  <symbol id="icon-x" viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></symbol>
+  <symbol id="icon-pin" viewBox="0 0 24 24"><path d="M12 21s-7-7.4-7-12a7 7 0 0 1 14 0c0 4.6-7 12-7 12z"/><circle cx="12" cy="9" r="2.3"/></symbol>
+  <symbol id="icon-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M4.9 6.9l1.7 1.7M17.4 15.4l1.7 1.7M3 12h2.4M18.6 12H21M4.9 17.1l1.7-1.7M17.4 8.6l1.7-1.7"/></symbol>
+  <symbol id="icon-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="8.5" y1="22" x2="15.5" y2="22"/></symbol>
+  <symbol id="icon-play" viewBox="0 0 24 24"><polygon points="8 5 19 12 8 19 8 5"/></symbol>
+  <symbol id="icon-users" viewBox="0 0 24 24"><circle cx="8.5" cy="9" r="3"/><path d="M2.5 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="10" r="2.3"/><path d="M15.6 14.2c2.4.4 4.1 2.4 4.1 4.8"/></symbol>
+  <symbol id="icon-cup" viewBox="0 0 24 24"><path d="M4.5 9h13v6a4 4 0 0 1-4 4h-5a4 4 0 0 1-4-4V9z"/><path d="M17.5 10h1.3a2.4 2.4 0 0 1 0 4.8h-1.3"/><line x1="8" y1="3" x2="8" y2="6"/><line x1="11.5" y1="3" x2="11.5" y2="6"/></symbol>
+  <symbol id="icon-chat" viewBox="0 0 24 24"><path d="M3 5h11v7H8l-3.3 2.6V5z"/><path d="M13.5 9H19a1.5 1.5 0 0 1 1.5 1.5v4.6L17.7 13H14"/></symbol>
+  <symbol id="icon-flag" viewBox="0 0 24 24"><line x1="5" y1="3" x2="5" y2="21"/><path d="M5 4.2h13l-3 4 3 4H5z"/></symbol>
+  <symbol id="icon-film" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="8" y1="5" x2="8" y2="19"/><line x1="16" y1="5" x2="16" y2="19"/><line x1="3" y1="10" x2="8" y2="10"/><line x1="3" y1="15" x2="8" y2="15"/><line x1="16" y1="10" x2="21" y2="10"/><line x1="16" y1="15" x2="21" y2="15"/></symbol>
+  <symbol id="icon-box" viewBox="0 0 24 24"><path d="M3 8l9-5 9 5-9 5-9-5z"/><path d="M3 8v9l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="22"/></symbol>
+  <symbol id="icon-signal" viewBox="0 0 24 24"><path d="M3.5 17.5a12 12 0 0 1 17 0" opacity="0.35"/><path d="M6.8 14.2a7.5 7.5 0 0 1 10.4 0" opacity="0.7"/><circle cx="12" cy="18" r="1.6"/></symbol>
+  <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M12 20.2s-7.2-4.2-9.6-8.5C.9 8 2.5 5 6 5c2.1 0 3.6 1.2 4.5 2.7C11.4 6.2 12.9 5 15 5c3.5 0 5.1 3 3.6 6.7-2.4 4.3-6.6 8.5-6.6 8.5z"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand-row">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 44 44" fill="none">
+          <circle cx="22" cy="22" r="19" stroke="rgba(255,255,255,0.22)" stroke-width="1.4"/>
+          <g stroke="#9297a8" stroke-width="1.1">
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(0 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(30 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(60 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(90 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(120 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(150 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(180 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(210 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(240 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(270 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(300 22 22)"/>
+            <line x1="22" y1="4" x2="22" y2="7" transform="rotate(330 22 22)"/>
+          </g>
+          <circle cx="22" cy="22" r="9.2" fill="#242838" stroke="#f4f2ec" stroke-width="1.1"/>
+          <g stroke="#f4f2ec" stroke-width="0.9" opacity="0.55">
+            <line x1="22" y1="14.5" x2="22" y2="29.5"/>
+            <line x1="14.5" y1="22" x2="29.5" y2="22"/>
+            <line x1="17.2" y1="17.2" x2="26.8" y2="26.8"/>
+            <line x1="26.8" y1="17.2" x2="17.2" y2="26.8"/>
+          </g>
+          <circle cx="22" cy="6" r="3" fill="#ff3b4e"/>
+        </svg>
+        <div>
+          <div class="brand-name">CAPTURA</div>
+          <div class="brand-tag">Roteiro de cobertura ao vivo</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="live-clock"><span class="live-dot"></span><span id="clockText">--:--:--</span></div>
+        <button class="reset-btn" id="resetBtn" type="button">↺ Reiniciar checklist</button>
+      </div>
+    </div>
+
+    <div class="event-title-row">
+      <span class="event-label">Nome do evento</span>
+      <input class="event-input" id="eventTitle" type="text" value="Um Dia de Lívia — Espaço Ana Rabelo" maxlength="70" aria-label="Nome do evento">
+      <div class="event-sub">2 cerimônias · 2 festas · foco total na 1ª — a Lívia é a protagonista da narrativa</div>
+    </div>
+
+    <div class="progress-wrap" role="region" aria-live="polite">
+      <div class="progress-meta">
+        <span class="progress-count"><b id="doneCount">0</b> / <span id="totalCount">0</span> cenas capturadas</span>
+        <span class="progress-pct" id="progressPct">0%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <nav class="phase-nav" id="phaseNav" aria-label="Ir para seção"></nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="golden-rule">
+    <svg class="icon gr-icon"><use href="#icon-heart"/></svg>
+    <div>
+      <b>Regra de ouro do dia</b>
+      <p>Não dirijam demais a Lívia. Deem situações, não falas prontas — se ela for espontânea, o roteiro é só um guia. A personalidade dela é o fio condutor da narrativa; o evento é o cenário.</p>
+    </div>
+  </div>
+
+  <div id="phasesContainer"></div>
+
+  <section class="missions-section">
+    <div class="missions-head">
+      <span class="phase-eyebrow">Caça de momentos — sem ordem fixa</span>
+      <div class="missions-title">🎯 Missões do dia</div>
+      <div class="missions-sub">Momentos pra flagrar a qualquer hora, em qualquer cena. Toquem para marcar quando capturar.</div>
+    </div>
+    <div class="missions-grid" id="missionsGrid"></div>
+  </section>
+</main>
+
+<footer>CAPTURA · roteiro gerado para uso da equipe de conteúdo em campo</footer>
+
+<div class="completion-banner" id="completionBanner">
+  <div class="completion-badge"><svg class="icon"><use href="#icon-check"/></svg></div>
+  <div class="completion-text">
+    <b>Cobertura completa ✓</b>
+    <span id="completionSub">Todas as cenas foram capturadas.</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  const PHASES = [
+    { key:'chegada', label:'Chegada & Preparação', icon:'pin' },
+    { key:'cerimonia', label:'Cerimônia', icon:'heart' },
+    { key:'festa', label:'Festa', icon:'play' },
+    { key:'encerramento', label:'Encerramento', icon:'flag' },
+    { key:'segundo', label:'Segundo Evento (plot twist)', icon:'signal' }
+  ];
+
+  const CONTENT = [
+    { id:1, phase:'chegada', order:1, title:'Começa antes de tudo', icon:'pin', formato:'Story ao vivo',
+      capture:['Ela chegando / descendo do carro','Abrindo a porta, pegando o celular','Falando com a equipe, andando rápido','Alguma expressão engraçada espontânea'],
+      speech:'"Bom dia! Hoje são duas cerimônias e duas festas. Desejem sorte." 😂 — ou, se estiver mais brincalhona: "Hoje eu não tenho vida. Tenho evento."',
+      can:['Deixar ela falar naturalmente, sem preparar fala','Captar a correria real: bolsa, celular, passos rápidos'],
+      cannot:['Interromper para pedir pose','Transformar a fala em algo ensaiado'] },
+    { id:2, phase:'chegada', order:2, title:'Vamos ver se dá tudo certo', icon:'box', formato:'Story ao vivo',
+      capture:['Fachada do espaço','Salão vazio e montagem em andamento','Mesas, fornecedores chegando, decoração sendo montada','Equipe trabalhando'],
+      speech:'"Chegamos. Agora é só fazer tudo dar certo. Tranquilo. 😌" — ou: "Ainda está assim. Daqui a pouco vocês vão entender o motivo do meu estresse." 😂',
+      can:['Registrar o espaço 100% vazio, no mesmo ângulo que será usado no "depois"','Mostrar fornecedores chegando e equipe montando'],
+      cannot:['Pular essa etapa — ela é a base do comparativo antes/depois lá na frente'] },
+    { id:3, phase:'chegada', order:3, title:'O bastidor de verdade', icon:'gear', formato:'Story ao vivo',
+      capture:['Caixas no chão, bagunça real','Gente correndo de um lado pro outro','Ela descabelada ou procurando algo','Qualquer reação espontânea dela, tipo "Cadê isso?"'],
+      speech:'Usem as falas espontâneas dela, tipo "Cadê isso?" ou "Não me pergunta nada agora." 😂 — não precisa roteirizar, só captar.',
+      can:['Mostrar caixas no chão, gente correndo, ela procurando algo','Captar frases espontâneas dela sem editar o tom'],
+      cannot:['Ter medo de mostrar o "feio" do bastidor — é isso que diferencia a cobertura'] },
+    { id:4, phase:'chegada', order:4, title:'O primeiro perrengue', icon:'signal', formato:'Story ao vivo',
+      capture:['O imprevisto em si (fornecedor atrasado, algo quebrado, horário apertado etc.)','A reação dela no momento do problema','Ela resolvendo a situação'],
+      speech:'Formato antes/depois: "5 minutos atrás:" (Lívia desesperada) → "5 minutos depois:" (Lívia plena) 😂',
+      can:['Aproveitar um imprevisto real e mostrar a Lívia resolvendo','Montar o contraste "5 minutos atrás / 5 minutos depois"'],
+      cannot:['Criar ou provocar um perrengue — esperem ele acontecer sozinho'] },
+    { id:5, phase:'cerimonia', order:5, title:'A cerimônia está chegando', icon:'users', formato:'Story ao vivo',
+      capture:['Relógio, contagem regressiva','Equipe correndo, últimos ajustes','Lívia conferindo tudo pela última vez','Convidados chegando, protagonista se preparando'],
+      speech:'"Ela está com cara de quem está tranquila." → corta pra ela falando algo desesperado → "Ela não está tranquila." 😂',
+      can:['Brincar com o contraste entre a calma aparente e a correria real dela'],
+      cannot:[] },
+    { id:6, phase:'cerimonia', order:6, title:'A cerimônia', icon:'heart', formato:'Reels (editado)',
+      capture:['Entrada','Reação dos familiares','Detalhes da cerimônia, celebrante, alianças','Votos, beijo, aplausos, lágrimas, abraços'],
+      speech:'Sem texto planejado aqui — deixem a cena falar por si.',
+      can:['Deixar alguns momentos simplesmente acontecerem, sem legenda'],
+      cannot:['Colocar texto em cima de tudo — a cerimônia pede menos comédia, mais emoção'] },
+    { id:7, phase:'festa', order:7, title:'A virada: agora começa a festa', icon:'play', formato:'Story ao vivo',
+      capture:['Lívia andando ou correndo pelo espaço logo após a cerimônia'],
+      speech:'"Cerimônia: entregue. ✅" → "Agora começa a outra parte…"',
+      can:['Marcar a virada de forma clara: cerimônia entregue, festa começando'],
+      cannot:[] },
+    { id:8, phase:'festa', order:8, title:'A transformação do Ana Rabelo', icon:'film', formato:'Reels (editado)',
+      capture:['Espaço vazio (antes) — mesmo ângulo da cena 2','Equipe montando (processo)','Espaço pronto (depois) — mesmo ângulo de novo'],
+      speech:'"O antes vocês já viram…" → "Agora olha o depois. ✨"',
+      can:['Repetir o mesmo enquadramento do início para o comparativo bater certinho'],
+      cannot:['Usar ângulos diferentes que quebrem o efeito antes/depois'] },
+    { id:9, phase:'festa', order:9, title:'A Lívia "don\'t talk to me"', icon:'cup', formato:'Story ao vivo',
+      capture:['Ela comendo ou tomando água','Sentada, respirando, parada','Mexendo no celular sem se preocupar com a câmera'],
+      speech:'"Lívia às 19h:" → "Lívia lembrando que ainda tem outro evento hoje:" 😂 (não precisa nem de fala — a expressão conta tudo)',
+      can:['Deixar a expressão dela contar a história, sem precisar de fala'],
+      cannot:['Forçar ela a falar ou performar nesse momento de pausa'] },
+    { id:10, phase:'festa', order:10, title:'Festa pronta', icon:'users', formato:'Reels (editado)',
+      capture:['Entrada da festa, decoração, mesa, flores, bolo','Convidados, iluminação, protagonistas, dança, abraços, brinde','Intercalado com a Lívia trabalhando (fornecedor, ajustes etc.)'],
+      speech:'Intercalem sem texto fixo: decoração linda → Lívia correndo · noivos felizes → Lívia com fornecedor · mesa impecável → Lívia ajeitando algo.',
+      can:['Intercalar a festa bonita com a Lívia trabalhando nos bastidores'],
+      cannot:['Mostrar só a festa "perfeita" sem o contraste do trabalho por trás'] },
+    { id:11, phase:'festa', order:11, title:'O melhor story: o contraste', icon:'chat', formato:'Story ao vivo',
+      capture:['Festa linda / música bonita','Corte pra Lívia correndo','Festa linda de novo','Lívia resolvendo algo','Festa linda outra vez','Lívia finalmente sorrindo'],
+      speech:'"O convidado vê isso:" ✨ (festa linda) → "A cerimonialista vê isso:" 🏃\u200d♀️📱🗣️😂',
+      can:['Este é o conceito central da cobertura — priorizem esse contraste sempre que possível'],
+      cannot:[] },
+    { id:12, phase:'encerramento', order:12, title:'Final — Lívia', icon:'flag', formato:'Story ao vivo',
+      capture:['Ela no fim da primeira festa: cansada, rindo, comendo, abraçando alguém, sentada, ou já indo pro próximo compromisso'],
+      speech:'"Primeira cerimônia + primeira festa: entregues. ✅" → "Agora ela só precisa lembrar que ainda tem mais uma. 😂"',
+      can:['Fechar com a Lívia, não com uma foto genérica do evento — ela é a protagonista da narrativa'],
+      cannot:['Terminar a cobertura sem mostrar o estado real dela no fim do dia'] },
+    { id:13, phase:'segundo', order:13, title:'Segundo evento: plot twist', icon:'signal', formato:'Story ao vivo',
+      capture:['Ela entrando no carro, saindo do primeiro evento','Um take rápido da chegada no segundo local'],
+      speech:'"Enquanto vocês estão vendo isso…" (ela entrando no carro) → "Ela já está indo para a segunda. 🫠"',
+      can:['Usar no máximo 1-2 stories rápidos, só pra reforçar a dimensão do dia'],
+      cannot:['Fazer uma cobertura completa do segundo evento — o foco continua sendo o primeiro'] }
+  ];
+
+  const MISSIONS = [
+    { key:'liv', emoji:'😂', label:'Lívia sendo Lívia', items:['Piada','Erro de fala','Expressão','Reclamação engraçada','Dança','Comentário espontâneo','Interação com equipe','Interação com fornecedor','Interação com convidados'] },
+    { key:'cerim', emoji:'😰', label:'Lívia em modo cerimonialista', items:['Telefone','Rádio','Checklist','Conferência','Correria','Resolução de problema','Orientação da equipe','Olhando o relógio'] },
+    { key:'evento', emoji:'✨', label:'O evento', items:['Espaço vazio','Montagem','Detalhes','Decoração','Cerimônia','Festa','Convidados','Emoção'] },
+    { key:'humano', emoji:'❤️', label:'O humano', items:['Abraço','Lágrima','Risada','Reação dos noivos','Família','Equipe comemorando'] },
+    { key:'transf', emoji:'🪄', label:'A transformação', items:['Espaço Ana Rabelo vazio → Ana Rabelo pronto'] }
+  ];
+
+  const recorded = {};
+  const missionsDone = {};
+
+  function icon(name){ return '<svg class="icon"><use href="#icon-'+name+'"/></svg>'; }
+
+  function cardHTML(item){
+    const captureItems = item.capture.map(t=>'<li>'+t+'</li>').join('');
+    let rulesHTML = '';
+    if(item.cannot && item.cannot.length){
+      const canItems = item.can.map(t=>'<li>'+t+'</li>').join('');
+      const cannotItems = item.cannot.map(t=>'<li>'+t+'</li>').join('');
+      rulesHTML =
+        '<div class="rules-col can"><div class="rules-title">'+icon('check')+' Pode</div><ul>'+canItems+'</ul></div>'+
+        '<div class="rules-col cannot"><div class="rules-title">'+icon('x')+' Não pode</div><ul>'+cannotItems+'</ul></div>';
+    } else {
+      const canItems = item.can.map(t=>'<li>'+t+'</li>').join('');
+      rulesHTML = '<div class="rules-col can full"><div class="rules-title">'+icon('check')+' Pode</div><ul>'+canItems+'</ul></div>';
+    }
+    const orderStr = String(item.order).padStart(2,'0');
+    return (
+      '<article class="card" id="card-'+item.id+'" data-id="'+item.id+'">'+
+        '<span class="vf-corner tl"></span><span class="vf-corner tr"></span>'+
+        '<span class="vf-corner bl"></span><span class="vf-corner br"></span>'+
+        '<span class="captured-stamp" id="stamp-'+item.id+'">CAPTURADO</span>'+
+        '<div class="card-top">'+
+          '<div class="card-icon-wrap"><div class="card-icon">'+icon(item.icon)+'</div></div>'+
+          '<div class="status-indicator"><span class="dot"></span><span class="check">'+icon('check')+'</span></div>'+
+        '</div>'+
+        '<h3 class="card-title">'+item.title+'</h3>'+
+        '<div class="time-row">'+
+          '<div class="time-box"><span class="time-label">Cena</span><span class="time-value">'+orderStr+' / 13</span></div>'+
+          '<div class="time-box deadline"><span class="time-label">Formato</span><span class="time-value">'+item.formato+'</span></div>'+
+        '</div>'+
+        '<ul class="capture-list">'+captureItems+'</ul>'+
+        '<div class="speech-box"><span class="speech-label">Frase / texto sugerido</span><p class="speech-text">'+item.speech+'</p></div>'+
+        '<div class="rules-grid">'+rulesHTML+'</div>'+
+        '<button class="record-btn" type="button" data-action="toggle" data-id="'+item.id+'">'+
+          '<span class="rec-icon"></span><span class="btn-label">Gravar</span>'+
+        '</button>'+
+      '</article>'
+    );
+  }
+
+  function render(){
+    const container = document.getElementById('phasesContainer');
+    const nav = document.getElementById('phaseNav');
+    let mainHTML = '';
+    let navHTML = '';
+
+    PHASES.forEach(phase=>{
+      const items = CONTENT.filter(c=>c.phase===phase.key);
+      mainHTML +=
+        '<section class="phase" id="'+phase.key+'">'+
+          '<div class="phase-header">'+
+            '<div class="phase-icon">'+icon(phase.icon)+'</div>'+
+            '<div class="phase-titles">'+
+              '<div class="phase-eyebrow">Momento do evento</div>'+
+              '<div class="phase-name">'+phase.label+'</div>'+
+            '</div>'+
+            '<div class="phase-count" id="phasecount-'+phase.key+'">0 / '+items.length+'</div>'+
+          '</div>'+
+          '<div class="cards-grid">'+ items.map(cardHTML).join('') +'</div>'+
+        '</section>';
+
+      navHTML +=
+        '<a class="phase-pill" id="pill-'+phase.key+'" href="#'+phase.key+'">'+
+          icon(phase.icon)+'<span>'+phase.label+'</span> <b id="pillcount-'+phase.key+'">0/'+items.length+'</b>'+
+        '</a>';
+    });
+
+    container.innerHTML = mainHTML;
+    nav.innerHTML = navHTML;
+    document.getElementById('totalCount').textContent = CONTENT.length;
+  }
+
+  function renderMissions(){
+    const grid = document.getElementById('missionsGrid');
+    grid.innerHTML = MISSIONS.map(cat=>{
+      const chips = cat.items.map((t,idx)=>
+        '<button type="button" class="mission-chip" data-cat="'+cat.key+'" data-idx="'+idx+'">'+t+'</button>'
+      ).join('');
+      return (
+        '<div class="mission-cat">'+
+          '<div class="mission-cat-head">'+
+            '<div class="mission-cat-label">'+cat.emoji+' '+cat.label+'</div>'+
+            '<div class="mission-cat-count" id="misscount-'+cat.key+'">0/'+cat.items.length+'</div>'+
+          '</div>'+
+          '<div class="mission-chips">'+chips+'</div>'+
+        '</div>'
+      );
+    }).join('');
+  }
+
+  function updateAll(){
+    const doneIds = Object.keys(recorded).map(Number);
+    const doneCount = doneIds.length;
+    const total = CONTENT.length;
+    const pct = total ? Math.round((doneCount/total)*100) : 0;
+
+    document.getElementById('doneCount').textContent = doneCount;
+    document.getElementById('progressPct').textContent = pct+'%';
+    document.getElementById('progressFill').style.width = pct+'%';
+
+    PHASES.forEach(phase=>{
+      const items = CONTENT.filter(c=>c.phase===phase.key);
+      const doneInPhase = items.filter(c=>recorded[c.id]).length;
+      const countEl = document.getElementById('phasecount-'+phase.key);
+      const pillCountEl = document.getElementById('pillcount-'+phase.key);
+      const pillEl = document.getElementById('pill-'+phase.key);
+      if(countEl) countEl.innerHTML = '<b>'+doneInPhase+'</b> / '+items.length;
+      if(pillCountEl) pillCountEl.textContent = doneInPhase+'/'+items.length;
+      if(pillEl) pillEl.classList.toggle('done', doneInPhase===items.length && items.length>0);
+    });
+
+    checkCompletion(doneCount, total);
+  }
+
+  function updateMissions(){
+    MISSIONS.forEach(cat=>{
+      let done = 0;
+      cat.items.forEach((t,idx)=>{ if(missionsDone[cat.key+'-'+idx]) done++; });
+      const el = document.getElementById('misscount-'+cat.key);
+      if(el) el.textContent = done+'/'+cat.items.length;
+    });
+  }
+
+  function checkCompletion(doneCount, total){
+    const banner = document.getElementById('completionBanner');
+    if(doneCount>0 && doneCount===total){
+      const eventName = document.getElementById('eventTitle').value || 'o evento';
+      document.getElementById('completionSub').textContent = 'Todas as '+total+' cenas de "'+eventName+'" foram capturadas.';
+      banner.classList.add('visible');
+    } else {
+      banner.classList.remove('visible');
+    }
+  }
+
+  function toggleCard(id){
+    const card = document.getElementById('card-'+id);
+    const btnLabel = card.querySelector('.btn-label');
+    const stamp = document.getElementById('stamp-'+id);
+
+    if(recorded[id]){
+      delete recorded[id];
+      card.classList.remove('is-done');
+      btnLabel.textContent = 'Gravar';
+    } else {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,'0');
+      const mm = String(now.getMinutes()).padStart(2,'0');
+      const stamp_time = hh+':'+mm;
+      recorded[id] = stamp_time;
+      card.classList.add('is-done');
+      btnLabel.textContent = 'Gravado · '+stamp_time;
+      if(stamp) stamp.textContent = 'CAPTURADO · '+stamp_time;
+    }
+    updateAll();
+  }
+
+  function toggleMission(cat, idx){
+    const key = cat+'-'+idx;
+    const chip = document.querySelector('.mission-chip[data-cat="'+cat+'"][data-idx="'+idx+'"]');
+    if(missionsDone[key]){
+      delete missionsDone[key];
+      chip.classList.remove('done');
+    } else {
+      missionsDone[key] = true;
+      chip.classList.add('done');
+    }
+    updateMissions();
+  }
+
+  document.addEventListener('click', function(e){
+    const recBtn = e.target.closest('[data-action="toggle"]');
+    if(recBtn){ toggleCard(Number(recBtn.dataset.id)); return; }
+    const chip = e.target.closest('.mission-chip');
+    if(chip){ toggleMission(chip.dataset.cat, Number(chip.dataset.idx)); return; }
+  });
+
+  function tickClock(){
+    const now = new Date();
+    document.getElementById('clockText').textContent = now.toLocaleTimeString('pt-BR', {hour12:false});
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  const resetBtn = document.getElementById('resetBtn');
+  let confirming = false;
+  let confirmTimer = null;
+  resetBtn.addEventListener('click', function(){
+    if(!confirming){
+      confirming = true;
+      resetBtn.classList.add('confirming');
+      resetBtn.textContent = 'Clique novamente para confirmar';
+      confirmTimer = setTimeout(()=>{
+        confirming = false;
+        resetBtn.classList.remove('confirming');
+        resetBtn.textContent = '↺ Reiniciar checklist';
+      }, 3000);
+    } else {
+      clearTimeout(confirmTimer);
+      Object.keys(recorded).forEach(id=>delete recorded[id]);
+      Object.keys(missionsDone).forEach(k=>delete missionsDone[k]);
+      document.querySelectorAll('.card').forEach(card=>{
+        card.classList.remove('is-done');
+        card.querySelector('.btn-label').textContent = 'Gravar';
+      });
+      document.querySelectorAll('.mission-chip').forEach(chip=>chip.classList.remove('done'));
+      confirming = false;
+      resetBtn.classList.remove('confirming');
+      resetBtn.textContent = '↺ Reiniciar checklist';
+      updateAll();
+      updateMissions();
+    }
+  });
+
+  render();
+  renderMissions();
+  updateAll();
+  updateMissions();
+})();
+</script>
+</body>
+</html>

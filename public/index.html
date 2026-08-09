@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTURA — Roteiro em checklist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true">
+  <symbol id="icon-check" viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></symbol>
+  <symbol id="icon-x" viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></symbol>
+  <symbol id="icon-pin" viewBox="0 0 24 24"><path d="M12 21s-7-7.4-7-12a7 7 0 0 1 14 0c0 4.6-7 12-7 12z"/><circle cx="12" cy="9" r="2.3"/></symbol>
+  <symbol id="icon-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M4.9 6.9l1.7 1.7M17.4 15.4l1.7 1.7M3 12h2.4M18.6 12H21M4.9 17.1l1.7-1.7M17.4 8.6l1.7-1.7"/></symbol>
+  <symbol id="icon-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="8.5" y1="22" x2="15.5" y2="22"/></symbol>
+  <symbol id="icon-play" viewBox="0 0 24 24"><polygon points="8 5 19 12 8 19 8 5"/></symbol>
+  <symbol id="icon-users" viewBox="0 0 24 24"><circle cx="8.5" cy="9" r="3"/><path d="M2.5 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="10" r="2.3"/><path d="M15.6 14.2c2.4.4 4.1 2.4 4.1 4.8"/></symbol>
+  <symbol id="icon-cup" viewBox="0 0 24 24"><path d="M4.5 9h13v6a4 4 0 0 1-4 4h-5a4 4 0 0 1-4-4V9z"/><path d="M17.5 10h1.3a2.4 2.4 0 0 1 0 4.8h-1.3"/><line x1="8" y1="3" x2="8" y2="6"/><line x1="11.5" y1="3" x2="11.5" y2="6"/></symbol>
+  <symbol id="icon-chat" viewBox="0 0 24 24"><path d="M3 5h11v7H8l-3.3 2.6V5z"/><path d="M13.5 9H19a1.5 1.5 0 0 1 1.5 1.5v4.6L17.7 13H14"/></symbol>
+  <symbol id="icon-flag" viewBox="0 0 24 24"><line x1="5" y1="3" x2="5" y2="21"/><path d="M5 4.2h13l-3 4 3 4H5z"/></symbol>
+  <symbol id="icon-film" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="8" y1="5" x2="8" y2="19"/><line x1="16" y1="5" x2="16" y2="19"/><line x1="3" y1="10" x2="8" y2="10"/><line x1="3" y1="15" x2="8" y2="15"/><line x1="16" y1="10" x2="21" y2="10"/><line x1="16" y1="15" x2="21" y2="15"/></symbol>
+  <symbol id="icon-box" viewBox="0 0 24 24"><path d="M3 8l9-5 9 5-9 5-9-5z"/><path d="M3 8v9l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="22"/></symbol>
+  <symbol id="icon-signal" viewBox="0 0 24 24"><path d="M3.5 17.5a12 12 0 0 1 17 0" opacity="0.35"/><path d="M6.8 14.2a7.5 7.5 0 0 1 10.4 0" opacity="0.7"/><circle cx="12" cy="18" r="1.6"/></symbol>
+  <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M12 20.2s-7.2-4.2-9.6-8.5C.9 8 2.5 5 6 5c2.1 0 3.6 1.2 4.5 2.7C11.4 6.2 12.9 5 15 5c3.5 0 5.1 3 3.6 6.7-2.4 4.3-6.6 8.5-6.6 8.5z"/></symbol>
+</svg>
+
+<!-- ---------- IMPORT VIEW ---------- -->
+<div class="import-view" id="importView">
+  <div class="import-card">
+    <span class="import-eyebrow">Captura · novo evento</span>
+    <h1 class="import-title">Cole o roteiro do evento</h1>
+    <p class="import-sub">Escreva do jeito que quiser — com títulos, bullets, ou só corrido — em qualquer editor, e cole o texto aqui. A IA organiza em fases e cenas prontas pra checklist ao vivo em campo.</p>
+    <textarea class="import-textarea" id="roteiroInput" placeholder="Cole aqui o roteiro do evento..."></textarea>
+    <div class="import-actions">
+      <button class="btn btn-primary" id="generateBtn" type="button">Gerar checklist</button>
+      <button class="btn" id="exampleBtn" type="button">Usar roteiro de exemplo</button>
+    </div>
+    <div class="import-error" id="importError" hidden></div>
+  </div>
+</div>
+
+<!-- ---------- PREVIEW / EDIT VIEW ---------- -->
+<div id="previewView" hidden>
+  <div class="preview-topbar">
+    <div class="preview-topbar-inner">
+      <div>
+        <span class="preview-eyebrow">Revisão · antes de publicar</span>
+        <div class="preview-heading">Confira e ajuste o roteiro gerado</div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn" id="previewBackBtn" type="button">← Colar outro roteiro</button>
+        <button class="btn btn-primary" id="publishBtn" type="button">Publicar checklist</button>
+      </div>
+    </div>
+  </div>
+  <div class="preview-view">
+    <div class="field-row">
+      <span class="field-label">Nome do evento</span>
+      <input class="field-input" id="previewEventTitle" type="text" maxlength="70">
+    </div>
+
+    <div id="previewPhasesContainer"></div>
+    <button class="add-btn" id="addPhaseBtn" type="button">+ Adicionar fase</button>
+
+    <div style="margin-top:36px; padding-top:24px; border-top:1px solid var(--border);">
+      <div class="preview-section-title">Missões (momentos soltos, sem ordem fixa)</div>
+      <div id="previewMissionsContainer"></div>
+      <button class="add-btn" id="addMissionBtn" type="button">+ Adicionar categoria de missão</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- APP VIEW ---------- -->
+<div id="appView" hidden>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand-row">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 44 44" fill="none">
+            <circle cx="22" cy="22" r="19" stroke="rgba(255,255,255,0.22)" stroke-width="1.4"/>
+            <g stroke="#9297a8" stroke-width="1.1">
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(0 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(30 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(60 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(90 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(120 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(150 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(180 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(210 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(240 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(270 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(300 22 22)"/>
+              <line x1="22" y1="4" x2="22" y2="7" transform="rotate(330 22 22)"/>
+            </g>
+            <circle cx="22" cy="22" r="9.2" fill="#242838" stroke="#f4f2ec" stroke-width="1.1"/>
+            <g stroke="#f4f2ec" stroke-width="0.9" opacity="0.55">
+              <line x1="22" y1="14.5" x2="22" y2="29.5"/>
+              <line x1="14.5" y1="22" x2="29.5" y2="22"/>
+              <line x1="17.2" y1="17.2" x2="26.8" y2="26.8"/>
+              <line x1="26.8" y1="17.2" x2="17.2" y2="26.8"/>
+            </g>
+            <circle cx="22" cy="6" r="3" fill="#ff3b4e"/>
+          </svg>
+          <div>
+            <div class="brand-name">CAPTURA</div>
+            <div class="brand-tag">Roteiro de cobertura ao vivo</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="live-clock"><span class="live-dot"></span><span id="clockText">--:--:--</span></div>
+          <button class="reset-btn" id="newRoteiroBtn" type="button">← Novo roteiro</button>
+          <button class="reset-btn" id="resetBtn" type="button">↺ Reiniciar checklist</button>
+        </div>
+      </div>
+
+      <div class="event-title-row">
+        <span class="event-label">Nome do evento</span>
+        <input class="event-input" id="eventTitle" type="text" maxlength="70" aria-label="Nome do evento">
+        <div class="event-sub" id="eventSub"></div>
+      </div>
+
+      <div class="event-link-row" id="eventLinkRow" hidden>
+        <span class="event-label">Link do evento (compartilhe com a equipe)</span>
+        <div class="event-link-box">
+          <input class="event-link-input" id="eventLinkInput" type="text" readonly aria-label="Link do evento">
+          <button class="btn" id="copyLinkBtn" type="button">Copiar</button>
+        </div>
+      </div>
+
+      <div class="progress-wrap" role="region" aria-live="polite">
+        <div class="progress-meta">
+          <span class="progress-count"><b id="doneCount">0</b> / <span id="totalCount">0</span> cenas capturadas</span>
+          <span class="progress-pct" id="progressPct">0%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+
+      <nav class="phase-nav" id="phaseNav" aria-label="Ir para seção"></nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="golden-rule">
+      <svg class="icon gr-icon"><use href="#icon-heart"/></svg>
+      <div>
+        <b>Roteiro gerado automaticamente</b>
+        <p>Revise as cenas abaixo antes de ir a campo — o parser organiza o que você escreveu, mas vale conferir se nada ficou fora do lugar.</p>
+      </div>
+    </div>
+
+    <div id="phasesContainer"></div>
+
+    <section class="missions-section" id="missionsSection" hidden>
+      <div class="missions-head">
+        <span class="phase-eyebrow">Caça de momentos — sem ordem fixa</span>
+        <div class="missions-title">Missões do dia</div>
+        <div class="missions-sub">Momentos pra flagrar a qualquer hora, em qualquer cena. Toquem para marcar quando capturar.</div>
+      </div>
+      <div class="missions-grid" id="missionsGrid"></div>
+    </section>
+  </main>
+
+  <footer>CAPTURA · roteiro gerado automaticamente a partir do texto colado</footer>
+
+  <div class="completion-banner" id="completionBanner">
+    <div class="completion-badge"><svg class="icon"><use href="#icon-check"/></svg></div>
+    <div class="completion-text">
+      <b>Cobertura completa ✓</b>
+      <span id="completionSub">Todas as cenas foram capturadas.</span>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

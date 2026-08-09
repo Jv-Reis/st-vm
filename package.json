@@ -1,0 +1,20 @@
+{
+  "name": "captura-checklist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MVP0: cola um roteiro de cobertura de evento e gera um checklist interativo automaticamente.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.16.0",
+    "@supabase/supabase-js": "^2.112.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  }
+}
