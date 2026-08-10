@@ -29,6 +29,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let draft = null;
   const recorded = {};
   const missionsDone = {};
+  let currentEventId = null;
+  let progressStream = null;
+  let streamHadError = false;
 
   // ---------- helpers ----------
 
@@ -373,6 +376,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
     render();
     renderMissions();
+
+    if(data.progress){
+      Object.entries(data.progress.recorded || {}).forEach(([sceneId, time]) => applyRecord(Number(sceneId), time));
+      Object.entries(data.progress.missionsDone || {}).forEach(([key, done]) => { if(done) applyMissionKey(key, true); });
+    }
+
     updateAll();
     updateMissions();
 
@@ -388,6 +397,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     importView.hidden = false;
     importError.hidden = true;
     hideEventLink();
+    disconnectProgressStream();
     history.pushState({}, '', '/');
   }
 
@@ -396,10 +406,65 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const input = document.getElementById('eventLinkInput');
     input.value = window.location.origin + '/e/' + id;
     row.hidden = false;
+    currentEventId = id;
+    connectProgressStream(id);
   }
 
   function hideEventLink(){
     document.getElementById('eventLinkRow').hidden = true;
+  }
+
+  // ---------- progresso em tempo real ----------
+
+  function sendProgress(action, payload){
+    if(!currentEventId) return;
+    fetch('/api/events/' + currentEventId + '/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, payload })
+    }).catch(function(){});
+  }
+
+  function connectProgressStream(id){
+    if(progressStream) progressStream.close();
+    streamHadError = false;
+    progressStream = new EventSource('/api/events/' + id + '/stream');
+    progressStream.onmessage = function(e){
+      let msg;
+      try { msg = JSON.parse(e.data); } catch(err){ return; }
+      handleRemoteProgress(msg);
+    };
+    progressStream.onerror = function(){ streamHadError = true; };
+    progressStream.onopen = function(){
+      if(streamHadError){
+        streamHadError = false;
+        resyncProgress(id);
+      }
+    };
+  }
+
+  function disconnectProgressStream(){
+    if(progressStream){ progressStream.close(); progressStream = null; }
+    currentEventId = null;
+  }
+
+  function handleRemoteProgress(msg){
+    const action = msg.action;
+    const payload = msg.payload || {};
+    if(action === 'record') applyRecord(payload.sceneId, payload.time);
+    else if(action === 'unrecord') applyRecord(payload.sceneId, null);
+    else if(action === 'mission') applyMissionKey(payload.cat + '-' + payload.idx, true);
+    else if(action === 'unmission') applyMissionKey(payload.cat + '-' + payload.idx, false);
+    else if(action === 'reset') resetAllProgress();
+  }
+
+  function resyncProgress(id){
+    fetch('/api/events/' + id).then(function(r){ return r.json(); }).then(function(data){
+      if(!data || !data.progress) return;
+      resetAllProgress();
+      Object.entries(data.progress.recorded || {}).forEach(([sceneId, time]) => applyRecord(Number(sceneId), time));
+      Object.entries(data.progress.missionsDone || {}).forEach(([key, done]) => { if(done) applyMissionKey(key, true); });
+    }).catch(function(){});
   }
 
   document.getElementById('copyLinkBtn').addEventListener('click', function(){
@@ -486,7 +551,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     section.hidden = false;
     grid.innerHTML = MISSIONS.map(cat=>{
       const chips = cat.items.map((t,idx)=>
-        '<button type="button" class="mission-chip" data-cat="'+cat.key+'" data-idx="'+idx+'">'+escapeHTML(t)+'</button>'
+        '<button type="button" class="mission-chip" data-cat="'+escapeAttr(cat.key)+'" data-idx="'+idx+'" data-key="'+escapeAttr(cat.key+'-'+idx)+'">'+escapeHTML(t)+'</button>'
       ).join('');
       return (
         '<div class="mission-cat">'+
@@ -544,39 +609,65 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
-  function toggleCard(id){
+  function applyRecord(id, time){
     const card = document.getElementById('card-'+id);
-    const btnLabel = card.querySelector('.btn-label');
+    const btnLabel = card && card.querySelector('.btn-label');
     const stamp = document.getElementById('stamp-'+id);
 
-    if(recorded[id]){
+    if(time == null){
       delete recorded[id];
-      card.classList.remove('is-done');
-      btnLabel.textContent = 'Gravar';
+      if(card) card.classList.remove('is-done');
+      if(btnLabel) btnLabel.textContent = 'Gravar';
+      if(stamp) stamp.textContent = 'CAPTURADO';
+    } else {
+      recorded[id] = time;
+      if(card) card.classList.add('is-done');
+      if(btnLabel) btnLabel.textContent = 'Gravado · '+time;
+      if(stamp) stamp.textContent = 'CAPTURADO · '+time;
+    }
+    updateAll();
+  }
+
+  function applyMissionKey(key, done){
+    const chip = document.querySelector('.mission-chip[data-key="'+key+'"]');
+    if(done){
+      missionsDone[key] = true;
+      if(chip) chip.classList.add('done');
+    } else {
+      delete missionsDone[key];
+      if(chip) chip.classList.remove('done');
+    }
+    updateMissions();
+  }
+
+  function resetAllProgress(){
+    Object.keys(recorded).forEach(id => applyRecord(Number(id), null));
+    Object.keys(missionsDone).forEach(key => applyMissionKey(key, false));
+  }
+
+  function toggleCard(id){
+    if(recorded[id]){
+      applyRecord(id, null);
+      sendProgress('unrecord', { sceneId: id });
     } else {
       const now = new Date();
       const hh = String(now.getHours()).padStart(2,'0');
       const mm = String(now.getMinutes()).padStart(2,'0');
       const stamp_time = hh+':'+mm;
-      recorded[id] = stamp_time;
-      card.classList.add('is-done');
-      btnLabel.textContent = 'Gravado · '+stamp_time;
-      if(stamp) stamp.textContent = 'CAPTURADO · '+stamp_time;
+      applyRecord(id, stamp_time);
+      sendProgress('record', { sceneId: id, time: stamp_time });
     }
-    updateAll();
   }
 
   function toggleMission(cat, idx){
     const key = cat+'-'+idx;
-    const chip = document.querySelector('.mission-chip[data-cat="'+cat+'"][data-idx="'+idx+'"]');
     if(missionsDone[key]){
-      delete missionsDone[key];
-      chip.classList.remove('done');
+      applyMissionKey(key, false);
+      sendProgress('unmission', { cat, idx });
     } else {
-      missionsDone[key] = true;
-      chip.classList.add('done');
+      applyMissionKey(key, true);
+      sendProgress('mission', { cat, idx });
     }
-    updateMissions();
   }
 
   document.addEventListener('click', function(e){
@@ -660,18 +751,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       }, 3000);
     } else {
       clearTimeout(confirmTimer);
-      Object.keys(recorded).forEach(id=>delete recorded[id]);
-      Object.keys(missionsDone).forEach(k=>delete missionsDone[k]);
-      document.querySelectorAll('.card').forEach(card=>{
-        card.classList.remove('is-done');
-        card.querySelector('.btn-label').textContent = 'Gravar';
-      });
-      document.querySelectorAll('.mission-chip').forEach(chip=>chip.classList.remove('done'));
+      resetAllProgress();
+      sendProgress('reset', {});
       confirming = false;
       resetBtn.classList.remove('confirming');
       resetBtn.textContent = '↺ Reiniciar checklist';
-      updateAll();
-      updateMissions();
     }
   });
 

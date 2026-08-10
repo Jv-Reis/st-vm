@@ -2,7 +2,7 @@
 
 Cole o roteiro de cobertura de um evento (texto livre, sem formato fixo) e o site gera automaticamente um checklist interativo de captação, dividido em fases e cenas — com uma etapa de revisão editável antes de publicar, e um link compartilhável pra equipe.
 
-Ainda sem login, sem tempo real entre dispositivos (cada pessoa que abre o link vê o roteiro, mas o progresso de "gravado" é local a cada aba/dispositivo).
+O progresso de "gravado" é sincronizado em tempo real entre todos os dispositivos que estão vendo o mesmo evento. Ainda sem login nem edição de evento já publicado.
 
 Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão de crédito nem gastar nada dentro da cota gratuita (10 requisições/min, ~250-500/dia, mais do que suficiente pra uso de uma equipe pequena). O banco é **Supabase (Postgres)**, também no plano gratuito ($0/mês) — os eventos publicados persistem de verdade, sobrevivem a restart/redeploy do servidor.
 
@@ -37,13 +37,12 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 
 ## O que NÃO tem ainda
 
-- **Tempo real entre dispositivos**: cada pessoa que abre o link vê o roteiro publicado, mas marcar "Gravar" é local àquela aba — a equipe não vê o progresso uma da outra em tempo real.
-- **Link funcional fora da sua rede**: o link (`http://localhost:3000/e/...`) só abre em quem tiver acesso a essa máquina/rede, até você fazer o deploy (veja abaixo).
 - **Login e edição de evento já publicado** (pra editar, é preciso gerar/publicar de novo).
+- **Exportação de relatório pós-evento**.
 
 ## Deploy no Render (pra o link funcionar fora da sua rede)
 
-O projeto já está pronto pra isso (`render.yaml`, `git init` feito, primeiro commit local já criado). Faltam só as partes que só você pode fazer — criar contas e conectar — eu não tenho como fazer isso por você:
+✅ Já feito — o projeto está publicado no Render. Passos abaixo ficam de referência caso precise redeployar do zero.
 
 1. **Crie um repositório no GitHub** (github.com → New repository, pode ser privado) e copie a URL dele (ex: `https://github.com/seu-usuario/captura-checklist.git`).
 2. **Conecte e suba o código** (rode no terminal, dentro da pasta do projeto):
@@ -65,18 +64,19 @@ O projeto já está pronto pra isso (`render.yaml`, `git init` feito, primeiro c
 ## Estrutura do projeto
 
 ```
-server.js              servidor Express + /api/parse-roteiro (Gemini) + /api/events (Supabase) + rota /e/:id
+server.js              servidor Express + /api/parse-roteiro (Gemini) + /api/events (Supabase) + progresso em tempo real (SSE) + rota /e/:id
 public/index.html      tela de importação + prévia editável + tela do checklist (mesma página, alterna via JS)
 public/styles.css      estilos (adaptados do protótipo original)
-public/app.js          lógica: chamada à API, prévia editável (draft), publicação, link compartilhável, cards
+public/app.js          lógica: chamada à API, prévia editável (draft), publicação, link compartilhável, cards, sincronização de progresso via SSE
 .env.example            modelo de variáveis de ambiente (GEMINI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, PORT)
 ```
 
-**Projeto Supabase:** `captura-checklist` (região sa-east-1 / São Paulo), tabela `events` (`id`, `data` jsonb, `created_at`), RLS habilitado com policies públicas de insert/select (sem autenticação de usuário ainda).
+**Projeto Supabase:** `captura-checklist` (região sa-east-1 / São Paulo).
+- tabela `events` (`id`, `data` jsonb, `created_at`) — o roteiro publicado.
+- tabela `event_progress` (`id`, `event_id`, `action`, `payload` jsonb, `created_at`) — log append-only de cada "Gravar"/missão/reset, usado pra persistir e sincronizar o progresso entre dispositivos.
+- RLS habilitado nas duas, com policies públicas de insert/select (sem autenticação de usuário ainda).
 
 ## Próximos passos
 
-1. Hospedar o site publicamente (ex: Render free tier) pra o link compartilhável funcionar fora da sua rede — o banco já está pronto pra isso.
-2. Sincronização em tempo real entre dispositivos da equipe em campo (o Supabase já suporta isso nativamente via Realtime).
-3. Login, histórico de eventos e edição de evento já publicado.
-4. Exportação de relatório pós-evento.
+1. Login, histórico de eventos e edição de evento já publicado.
+2. Exportação de relatório pós-evento.

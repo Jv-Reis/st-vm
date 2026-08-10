@@ -180,16 +180,82 @@ app.get('/api/events/:id', async (req, res) => {
     return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
   }
 
-  const { data: row, error } = await supabase
-    .from('events')
-    .select('data')
-    .eq('id', req.params.id)
-    .maybeSingle();
+  const id = req.params.id;
+  const [{ data: row, error }, { data: progressRows }] = await Promise.all([
+    supabase.from('events').select('data').eq('id', id).maybeSingle(),
+    supabase.from('event_progress').select('action, payload').eq('event_id', id).order('created_at', { ascending: true })
+  ]);
 
   if (error || !row) {
     return res.status(404).json({ error: 'Evento não encontrado. O link pode estar errado ou o evento foi removido.' });
   }
-  res.json(row.data);
+  res.json({ ...row.data, progress: foldProgress(progressRows || []) });
+});
+
+// ---------- progresso em tempo real (SSE) ----------
+
+const PROGRESS_ACTIONS = new Set(['record', 'unrecord', 'mission', 'unmission', 'reset']);
+const progressSubscribers = new Map(); // eventId -> Set<res>
+
+function foldProgress(rows) {
+  const recorded = {};
+  const missionsDone = {};
+  for (const { action, payload } of rows) {
+    if (action === 'record') recorded[payload.sceneId] = payload.time;
+    else if (action === 'unrecord') delete recorded[payload.sceneId];
+    else if (action === 'mission') missionsDone[payload.cat + '-' + payload.idx] = true;
+    else if (action === 'unmission') delete missionsDone[payload.cat + '-' + payload.idx];
+    else if (action === 'reset') { Object.keys(recorded).forEach(k => delete recorded[k]); Object.keys(missionsDone).forEach(k => delete missionsDone[k]); }
+  }
+  return { recorded, missionsDone };
+}
+
+function broadcastProgress(eventId, message) {
+  const subs = progressSubscribers.get(eventId);
+  if (!subs) return;
+  const chunk = `data: ${JSON.stringify(message)}\n\n`;
+  for (const res of subs) res.write(chunk);
+}
+
+app.post('/api/events/:id/progress', async (req, res) => {
+  const id = req.params.id;
+  const { action, payload } = req.body || {};
+
+  if (!PROGRESS_ACTIONS.has(action)) {
+    return res.status(400).json({ error: 'Ação de progresso inválida.' });
+  }
+  if (!supabase) {
+    return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
+  }
+
+  const { error } = await supabase.from('event_progress').insert({ event_id: id, action, payload: payload || {} });
+  if (error) {
+    console.error('Erro ao salvar progresso:', error);
+    return res.status(500).json({ error: 'Não consegui salvar o progresso.' });
+  }
+
+  broadcastProgress(id, { action, payload: payload || {} });
+  res.json({ ok: true });
+});
+
+app.get('/api/events/:id/stream', (req, res) => {
+  const id = req.params.id;
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive'
+  });
+  res.write(':ok\n\n');
+
+  if (!progressSubscribers.has(id)) progressSubscribers.set(id, new Set());
+  progressSubscribers.get(id).add(res);
+
+  const heartbeat = setInterval(() => res.write(':hb\n\n'), 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    progressSubscribers.get(id)?.delete(res);
+  });
 });
 
 app.get('/e/:id', (req, res) => {
