@@ -37,11 +37,13 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const historyList = document.getElementById('historyList');
   const historyNewBtn = document.getElementById('historyNewBtn');
   const editEventLink = document.getElementById('editEventLink');
+  const reportView = document.getElementById('reportView');
+  const reportContent = document.getElementById('reportContent');
 
-  const VIEWS = { import: importView, preview: previewView, login: loginView, history: historyView, app: appView };
+  const VIEWS = { import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView };
   function showView(name){
     Object.keys(VIEWS).forEach(key => { VIEWS[key].hidden = key !== name; });
-    authStrip.hidden = name === 'app';
+    authStrip.hidden = (name === 'app' || name === 'report');
     window.scrollTo(0, 0);
   }
 
@@ -842,6 +844,71 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
   tickClock();
   setInterval(tickClock, 1000);
+
+  // ---------- relatório pós-evento ----------
+
+  function generateReport(){
+    const eventTitle = document.getElementById('eventTitle').value || 'Evento';
+    const total = CONTENT.length;
+    const doneCount = Object.keys(recorded).length;
+    const pct = total ? Math.round((doneCount/total)*100) : 0;
+    const missionTotal = MISSIONS.reduce((sum, cat) => sum + cat.items.length, 0);
+    const missionDone = Object.keys(missionsDone).length;
+    const generatedAt = new Date().toLocaleString('pt-BR');
+
+    const phasesHTML = PHASES.map(phase => {
+      const items = CONTENT.filter(c => c.phase === phase.key);
+      if(!items.length) return '';
+      const rows = items.map(item => {
+        const done = !!recorded[item.id];
+        const time = recorded[item.id] || '';
+        return (
+          '<tr>'+
+            '<td class="report-status">'+(done ? '✓' : '—')+'</td>'+
+            '<td>'+escapeHTML(item.title)+'</td>'+
+            '<td class="report-muted">'+escapeHTML(item.formato)+'</td>'+
+            '<td class="report-muted">'+(time ? escapeHTML(time) : '—')+'</td>'+
+          '</tr>'
+        );
+      }).join('');
+      return (
+        '<h3>'+escapeHTML(phase.label)+'</h3>'+
+        '<table class="report-table"><thead><tr><th></th><th>Cena</th><th>Formato</th><th>Capturado às</th></tr></thead><tbody>'+rows+'</tbody></table>'
+      );
+    }).join('');
+
+    const missionsHTML = MISSIONS.length ? (
+      '<h3>Missões (momentos soltos)</h3>'+
+      MISSIONS.map(cat => {
+        const rows = cat.items.map((t, idx) => {
+          const done = !!missionsDone[cat.key + '-' + idx];
+          return '<tr><td class="report-status">'+(done ? '✓' : '—')+'</td><td>'+escapeHTML(t)+'</td></tr>';
+        }).join('');
+        return '<p class="report-cat-label">'+escapeHTML(cat.emoji||'')+' '+escapeHTML(cat.label)+'</p><table class="report-table"><tbody>'+rows+'</tbody></table>';
+      }).join('')
+    ) : '';
+
+    const missionStatHTML = missionTotal
+      ? '<div class="report-stat"><b>'+missionDone+'/'+missionTotal+'</b><span>Missões flagradas</span></div>'
+      : '';
+
+    reportContent.innerHTML =
+      '<h1>'+escapeHTML(eventTitle)+'</h1>'+
+      '<div class="report-sub">Relatório de cobertura · gerado em '+escapeHTML(generatedAt)+'</div>'+
+      '<div class="report-stats">'+
+        '<div class="report-stat"><b>'+doneCount+'/'+total+'</b><span>Cenas capturadas ('+pct+'%)</span></div>'+
+        missionStatHTML+
+      '</div>'+
+      phasesHTML+
+      missionsHTML+
+      '<div class="report-footer">Gerado por CAPTURA</div>';
+
+    showView('report');
+  }
+
+  document.getElementById('exportReportBtn').addEventListener('click', generateReport);
+  document.getElementById('reportBackBtn').addEventListener('click', function(){ showView('app'); });
+  document.getElementById('reportPrintBtn').addEventListener('click', function(){ window.print(); });
 
   document.getElementById('newRoteiroBtn').addEventListener('click', function(){
     roteiroInput.value = '';

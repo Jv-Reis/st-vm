@@ -121,6 +121,23 @@
   </div>
 </div>
 
+<!-- ---------- REPORT VIEW ---------- -->
+<div id="reportView" hidden>
+  <div class="preview-topbar no-print">
+    <div class="preview-topbar-inner">
+      <div>
+        <span class="preview-eyebrow">Captura · relatório</span>
+        <div class="preview-heading">Relatório de cobertura</div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn" id="reportBackBtn" type="button">← Voltar</button>
+        <button class="btn btn-primary" id="reportPrintBtn" type="button">Imprimir / Salvar PDF</button>
+      </div>
+    </div>
+  </div>
+  <div id="reportContent" class="report-content"></div>
+</div>
+
 <!-- ---------- APP VIEW ---------- -->
 <div id="appView" hidden>
   <header class="topbar">
@@ -160,6 +177,7 @@
         <div style="display:flex; align-items:center; gap:10px;">
           <div class="live-clock"><span class="live-dot"></span><span id="clockText">--:--:--</span></div>
           <a class="reset-btn" id="editEventLink" href="#" hidden>✎ Editar evento</a>
+          <button class="reset-btn" id="exportReportBtn" type="button">📄 Relatório</button>
           <button class="reset-btn" id="newRoteiroBtn" type="button">← Novo roteiro</button>
           <button class="reset-btn" id="resetBtn" type="button">↺ Reiniciar checklist</button>
         </div>
