@@ -11,6 +11,17 @@
 </head>
 <body>
 
+<div class="auth-strip" id="authStrip">
+  <span id="authStripLoggedOut">
+    <button class="auth-link" id="authStripLoginBtn" type="button">Entrar</button>
+  </span>
+  <span id="authStripLoggedIn" hidden>
+    <span class="auth-email" id="authStripEmail"></span>
+    <a class="auth-link" href="/historico" id="authStripHistoryLink">Meus eventos</a>
+    <button class="auth-link" id="authStripLogoutBtn" type="button">Sair</button>
+  </span>
+</div>
+
 <svg class="sprite" aria-hidden="true">
   <symbol id="icon-check" viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></symbol>
   <symbol id="icon-x" viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></symbol>
@@ -74,6 +85,42 @@
   </div>
 </div>
 
+<!-- ---------- LOGIN VIEW ---------- -->
+<div id="loginView" hidden>
+  <div class="import-view">
+    <div class="import-card">
+      <span class="import-eyebrow">Captura · entrar</span>
+      <h1 class="import-title">Entrar pra publicar</h1>
+      <p class="import-sub" id="loginIntro">Só quem cria ou edita um roteiro precisa de conta — a equipe que abre o link em campo continua sem login. Digite seu email e mandamos um link de acesso, sem senha.</p>
+      <div class="field-row">
+        <span class="field-label">Email</span>
+        <input class="field-input" id="loginEmailInput" type="email" placeholder="voce@email.com" autocomplete="email">
+      </div>
+      <div class="import-actions">
+        <button class="btn btn-primary" id="loginSubmitBtn" type="button">Enviar link de acesso</button>
+        <button class="btn" id="loginBackBtn" type="button">Cancelar</button>
+      </div>
+      <div class="import-error" id="loginStatus" hidden></div>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- HISTORY VIEW ---------- -->
+<div id="historyView" hidden>
+  <div class="preview-topbar">
+    <div class="preview-topbar-inner">
+      <div>
+        <span class="preview-eyebrow">Captura · meus eventos</span>
+        <div class="preview-heading">Histórico de roteiros publicados</div>
+      </div>
+      <button class="btn btn-primary" id="historyNewBtn" type="button">+ Novo roteiro</button>
+    </div>
+  </div>
+  <div class="preview-view">
+    <div id="historyList"></div>
+  </div>
+</div>
+
 <!-- ---------- APP VIEW ---------- -->
 <div id="appView" hidden>
   <header class="topbar">
@@ -112,6 +159,7 @@
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
           <div class="live-clock"><span class="live-dot"></span><span id="clockText">--:--:--</span></div>
+          <a class="reset-btn" id="editEventLink" href="#" hidden>✎ Editar evento</a>
           <button class="reset-btn" id="newRoteiroBtn" type="button">← Novo roteiro</button>
           <button class="reset-btn" id="resetBtn" type="button">↺ Reiniciar checklist</button>
         </div>
@@ -175,6 +223,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/app.js"></script>
 </body>
 </html>

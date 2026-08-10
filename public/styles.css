@@ -44,6 +44,13 @@ a{color:inherit;}
 
 [hidden]{display:none !important;}
 
+/* ---------- AUTH STRIP ---------- */
+.auth-strip{position:sticky; top:0; z-index:50; display:flex; justify-content:flex-end; align-items:center; gap:14px; padding:8px 20px; background:var(--bg-soft); border-bottom:1px solid var(--border); font-family:var(--font-mono); font-size:0.72rem;}
+.auth-link{background:none; border:none; color:var(--text-muted); font-family:var(--font-mono); font-size:0.72rem; cursor:pointer; text-decoration:none; padding:0;}
+.auth-link:hover{color:var(--text);}
+.auth-email{color:var(--text-faint); margin-right:2px;}
+#authStripLoggedIn{display:flex; align-items:center; gap:14px;}
+
 /* ---------- IMPORT VIEW ---------- */
 .import-view{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px 20px;}
 .import-card{width:100%; max-width:720px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:32px;}
@@ -92,6 +99,13 @@ a{color:inherit;}
 .add-btn{width:100%; border:1.5px dashed var(--border-strong); background:none; color:var(--text-muted); font-family:var(--font-mono); font-size:0.76rem; padding:10px; border-radius:var(--radius-sm); cursor:pointer; transition:.15s ease;}
 .add-btn:hover{border-color:var(--amber); color:var(--amber);}
 .preview-mission-block{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:14px;}
+
+/* ---------- HISTORY ---------- */
+.history-card{display:flex; align-items:center; justify-content:space-between; gap:14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 20px; margin-bottom:12px; flex-wrap:wrap;}
+.history-title{font-family:var(--font-display); font-weight:700; font-size:0.98rem;}
+.history-meta{font-family:var(--font-mono); font-size:0.72rem; color:var(--text-faint); margin-top:4px;}
+.history-actions{display:flex; gap:8px; flex:0 0 auto;}
+.history-empty{color:var(--text-muted); font-size:0.88rem; padding:20px 0;}
 
 /* ---------- HEADER ---------- */
 .topbar{position:sticky; top:0; z-index:40; background:rgba(18,20,28,0.86); backdrop-filter:blur(14px); border-bottom:1px solid var(--border);}
@@ -264,4 +278,7 @@ footer{max-width:1180px; margin:0 auto; padding:0 28px 50px; color:var(--text-fa
   .import-card{padding:22px;}
   .field-grid{grid-template-columns:1fr;}
   .preview-phase-head{align-items:stretch;}
+  .auth-strip{padding:8px 16px; gap:10px; flex-wrap:wrap; justify-content:center; text-align:center;}
+  .auth-email{max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; vertical-align:bottom;}
+  .history-card{padding:14px 16px;}
 }

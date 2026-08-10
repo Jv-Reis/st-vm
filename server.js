@@ -15,6 +15,36 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY)
   : null;
 
+function getBearerToken(req) {
+  const h = req.headers.authorization || '';
+  return h.startsWith('Bearer ') ? h.slice(7) : null;
+}
+
+async function requireAuth(req, res, next) {
+  if (!supabase) return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
+  const token = getBearerToken(req);
+  if (!token) return res.status(401).json({ error: 'Login necessário.' });
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
+  req.user = data.user;
+  req.token = token;
+  next();
+}
+
+// Cliente por-requisição com o JWT do usuário anexado — necessário pra RLS
+// (auth.uid()) reconhecer quem está de fato fazendo a escrita. NÃO usar
+// supabase.auth.setSession() no cliente global — misturaria sessões de
+// requisições concorrentes de usuários diferentes.
+function scopedClient(token) {
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${token}` } }
+  });
+}
+
+app.get('/api/config', (req, res) => {
+  res.json({ supabaseUrl: process.env.SUPABASE_URL || '', supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '' });
+});
+
 const ICONS = ['pin', 'gear', 'mic', 'play', 'users', 'cup', 'chat', 'flag', 'film', 'box', 'signal', 'heart'];
 
 const CHECKLIST_SCHEMA = {
@@ -146,33 +176,81 @@ app.post('/api/parse-roteiro', async (req, res) => {
   }
 });
 
-app.post('/api/events', async (req, res) => {
-  const { event_title, phases, scenes, missions } = req.body || {};
-
-  if (!Array.isArray(scenes) || !scenes.length) {
-    return res.status(400).json({ error: 'O evento precisa ter pelo menos uma cena antes de publicar.' });
-  }
-
-  if (!supabase) {
-    return res.status(500).json({
-      error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor. Copie .env.example para .env e preencha.'
-    });
-  }
-
-  const id = crypto.randomUUID().split('-')[0];
-  const payload = {
+function validEventPayload(body) {
+  const { event_title, phases, scenes, missions } = body || {};
+  if (!Array.isArray(scenes) || !scenes.length) return null;
+  return {
     event_title: event_title || 'Evento sem nome',
     phases: phases || [],
     scenes,
     missions: missions || []
   };
+}
 
-  const { error } = await supabase.from('events').insert({ id, data: payload });
+app.post('/api/events', requireAuth, async (req, res) => {
+  const payload = validEventPayload(req.body);
+  if (!payload) {
+    return res.status(400).json({ error: 'O evento precisa ter pelo menos uma cena antes de publicar.' });
+  }
+
+  const id = crypto.randomUUID().split('-')[0];
+  const db = scopedClient(req.token);
+  const { error } = await db.from('events').insert({ id, data: payload, owner_id: req.user.id });
   if (error) {
     console.error('Erro ao salvar evento:', error);
     return res.status(500).json({ error: 'Não consegui salvar o evento. Tente de novo.' });
   }
   res.json({ id });
+});
+
+app.patch('/api/events/:id', requireAuth, async (req, res) => {
+  const payload = validEventPayload(req.body);
+  if (!payload) {
+    return res.status(400).json({ error: 'O evento precisa ter pelo menos uma cena.' });
+  }
+
+  const db = scopedClient(req.token);
+  const { data, error } = await db
+    .from('events')
+    .update({ data: payload })
+    .eq('id', req.params.id)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao atualizar evento:', error);
+    return res.status(500).json({ error: 'Não consegui salvar as alterações. Tente de novo.' });
+  }
+  if (!data) {
+    return res.status(404).json({ error: 'Evento não encontrado ou você não é o dono dele.' });
+  }
+  res.json({ id: data.id });
+});
+
+app.get('/api/events', requireAuth, async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
+  }
+
+  const { data, error } = await supabase
+    .from('events')
+    .select('id, data, created_at')
+    .eq('owner_id', req.user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Erro ao listar eventos:', error);
+    return res.status(500).json({ error: 'Não consegui carregar seu histórico.' });
+  }
+
+  res.json({
+    events: (data || []).map((row) => ({
+      id: row.id,
+      event_title: row.data?.event_title || 'Evento sem nome',
+      scene_count: Array.isArray(row.data?.scenes) ? row.data.scenes.length : 0,
+      created_at: row.created_at
+    }))
+  });
 });
 
 app.get('/api/events/:id', async (req, res) => {
@@ -182,14 +260,14 @@ app.get('/api/events/:id', async (req, res) => {
 
   const id = req.params.id;
   const [{ data: row, error }, { data: progressRows }] = await Promise.all([
-    supabase.from('events').select('data').eq('id', id).maybeSingle(),
+    supabase.from('events').select('data, owner_id').eq('id', id).maybeSingle(),
     supabase.from('event_progress').select('action, payload').eq('event_id', id).order('created_at', { ascending: true })
   ]);
 
   if (error || !row) {
     return res.status(404).json({ error: 'Evento não encontrado. O link pode estar errado ou o evento foi removido.' });
   }
-  res.json({ ...row.data, progress: foldProgress(progressRows || []) });
+  res.json({ ...row.data, owner_id: row.owner_id, progress: foldProgress(progressRows || []) });
 });
 
 // ---------- progresso em tempo real (SSE) ----------
@@ -259,6 +337,14 @@ app.get('/api/events/:id/stream', (req, res) => {
 });
 
 app.get('/e/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/e/:id/editar', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/historico', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

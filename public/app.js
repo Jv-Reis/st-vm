@@ -16,12 +16,34 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const importView = document.getElementById('importView');
   const previewView = document.getElementById('previewView');
   const appView = document.getElementById('appView');
+  const loginView = document.getElementById('loginView');
+  const historyView = document.getElementById('historyView');
   const roteiroInput = document.getElementById('roteiroInput');
   const generateBtn = document.getElementById('generateBtn');
   const exampleBtn = document.getElementById('exampleBtn');
   const importError = document.getElementById('importError');
   const previewPhasesContainer = document.getElementById('previewPhasesContainer');
   const previewMissionsContainer = document.getElementById('previewMissionsContainer');
+  const loginEmailInput = document.getElementById('loginEmailInput');
+  const loginSubmitBtn = document.getElementById('loginSubmitBtn');
+  const loginBackBtn = document.getElementById('loginBackBtn');
+  const loginStatus = document.getElementById('loginStatus');
+  const authStrip = document.getElementById('authStrip');
+  const authStripLoggedOut = document.getElementById('authStripLoggedOut');
+  const authStripLoggedIn = document.getElementById('authStripLoggedIn');
+  const authStripEmail = document.getElementById('authStripEmail');
+  const authStripLoginBtn = document.getElementById('authStripLoginBtn');
+  const authStripLogoutBtn = document.getElementById('authStripLogoutBtn');
+  const historyList = document.getElementById('historyList');
+  const historyNewBtn = document.getElementById('historyNewBtn');
+  const editEventLink = document.getElementById('editEventLink');
+
+  const VIEWS = { import: importView, preview: previewView, login: loginView, history: historyView, app: appView };
+  function showView(name){
+    Object.keys(VIEWS).forEach(key => { VIEWS[key].hidden = key !== name; });
+    authStrip.hidden = name === 'app';
+    window.scrollTo(0, 0);
+  }
 
   let PHASES = [];
   let CONTENT = [];
@@ -30,8 +52,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const recorded = {};
   const missionsDone = {};
   let currentEventId = null;
+  let currentOwnerId = null;
+  let editingEventId = null;
   let progressStream = null;
   let streamHadError = false;
+
+  let sb = null;
+  let currentUser = null;
+  const PENDING_DRAFT_KEY = 'captura_pending_draft';
 
   // ---------- helpers ----------
 
@@ -102,6 +130,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         icon: ICONS.includes(p.icon) ? p.icon : 'flag'
       })),
       scenes: (data.scenes || []).map(s => ({
+        id: s.id || ('cena_' + Math.random().toString(36).slice(2, 8)),
         phase: s.phase,
         title: s.title || 'Cena sem título',
         icon: ICONS.includes(s.icon) ? s.icon : 'flag',
@@ -122,11 +151,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function loadPreview(data){
     draft = normalizeDraft(data);
+    editingEventId = null;
+    publishBtn.textContent = 'Publicar checklist';
     renderPreviewAll();
-    importView.hidden = true;
-    appView.hidden = true;
-    previewView.hidden = false;
-    window.scrollTo(0, 0);
+    showView('preview');
   }
 
   function renderPreviewAll(){
@@ -264,8 +292,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   });
 
   document.getElementById('previewBackBtn').addEventListener('click', function(){
-    previewView.hidden = true;
-    importView.hidden = false;
+    showView('import');
   });
 
   const publishBtn = document.getElementById('publishBtn');
@@ -275,24 +302,40 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       alert('Adicione pelo menos uma cena antes de publicar.');
       return;
     }
+
+    if(!currentUser){
+      localStorage.setItem(PENDING_DRAFT_KEY, JSON.stringify({ draft, editingEventId }));
+      showView('login');
+      loginStatus.textContent = 'Faça login pra publicar — seu roteiro fica salvo e volta pra revisão assim que você entrar.';
+      loginStatus.hidden = false;
+      return;
+    }
+
+    const wasEditing = editingEventId;
     publishBtn.disabled = true;
-    publishBtn.textContent = 'Publicando…';
+    publishBtn.textContent = wasEditing ? 'Salvando…' : 'Publicando…';
     try {
-      const resp = await fetch('/api/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const token = await accessToken();
+      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+      const url = wasEditing ? '/api/events/' + wasEditing : '/api/events';
+      const method = wasEditing ? 'PATCH' : 'POST';
+      const resp = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify(draft)
       });
       const result = await resp.json();
       if(!resp.ok){
         throw new Error(result.error || 'Erro ao salvar o evento.');
       }
+      const id = wasEditing || result.id;
+      currentOwnerId = currentUser.id;
+      editingEventId = null;
       loadChecklist(draft);
-      history.pushState({}, '', '/e/' + result.id);
-      showEventLink(result.id);
+      history.pushState({}, '', '/e/' + id);
+      showEventLink(id);
     } catch(err){
-      alert('Não consegui salvar o evento (' + (err.message || 'erro desconhecido') + '). Publicando só localmente — o link não vai funcionar em outro dispositivo.');
-      loadChecklist(draft);
+      alert('Não consegui salvar (' + (err.message || 'erro desconhecido') + ').');
     } finally {
       publishBtn.disabled = false;
       publishBtn.textContent = 'Publicar checklist';
@@ -356,7 +399,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       .slice()
       .sort((a, b) => (phaseOrder[a.phase] ?? 999) - (phaseOrder[b.phase] ?? 999))
       .map((scene, idx) => ({
-        id: idx + 1,
+        id: scene.id || (idx + 1),
         phase: scene.phase,
         order: idx + 1,
         title: scene.title || 'Cena sem título',
@@ -378,26 +421,23 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     renderMissions();
 
     if(data.progress){
-      Object.entries(data.progress.recorded || {}).forEach(([sceneId, time]) => applyRecord(Number(sceneId), time));
+      Object.entries(data.progress.recorded || {}).forEach(([sceneId, time]) => applyRecord(sceneId, time));
       Object.entries(data.progress.missionsDone || {}).forEach(([key, done]) => { if(done) applyMissionKey(key, true); });
     }
 
     updateAll();
     updateMissions();
 
-    importView.hidden = true;
-    previewView.hidden = true;
-    appView.hidden = false;
-    window.scrollTo(0, 0);
+    showView('app');
   }
 
   function backToImport(){
-    appView.hidden = true;
-    previewView.hidden = true;
-    importView.hidden = false;
+    showView('import');
     importError.hidden = true;
     hideEventLink();
     disconnectProgressStream();
+    currentOwnerId = null;
+    updateEditLinkVisibility();
     history.pushState({}, '', '/');
   }
 
@@ -408,6 +448,16 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     row.hidden = false;
     currentEventId = id;
     connectProgressStream(id);
+    updateEditLinkVisibility();
+  }
+
+  function updateEditLinkVisibility(){
+    if(currentEventId && currentUser && currentOwnerId && currentUser.id === currentOwnerId){
+      editEventLink.href = '/e/' + currentEventId + '/editar';
+      editEventLink.hidden = false;
+    } else {
+      editEventLink.hidden = true;
+    }
   }
 
   function hideEventLink(){
@@ -462,7 +512,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     fetch('/api/events/' + id).then(function(r){ return r.json(); }).then(function(data){
       if(!data || !data.progress) return;
       resetAllProgress();
-      Object.entries(data.progress.recorded || {}).forEach(([sceneId, time]) => applyRecord(Number(sceneId), time));
+      Object.entries(data.progress.recorded || {}).forEach(([sceneId, time]) => applyRecord(sceneId, time));
       Object.entries(data.progress.missionsDone || {}).forEach(([key, done]) => { if(done) applyMissionKey(key, true); });
     }).catch(function(){});
   }
@@ -488,23 +538,86 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   });
 
-  async function loadEventFromUrl(){
-    const match = window.location.pathname.match(/^\/e\/([a-zA-Z0-9-]+)$/);
-    if(!match) return;
-    const id = match[1];
+  async function loadEventFromUrl(id){
     try {
       const resp = await fetch('/api/events/' + id);
       const data = await resp.json();
       if(!resp.ok){
         throw new Error(data.error || 'Evento não encontrado.');
       }
+      currentOwnerId = data.owner_id || null;
       loadChecklist(data);
       showEventLink(id);
     } catch(err){
       importError.textContent = err.message || 'Não consegui carregar esse evento.';
       importError.hidden = false;
+      showView('import');
       history.pushState({}, '', '/');
     }
+  }
+
+  async function loadEventForEdit(id){
+    try {
+      const resp = await fetch('/api/events/' + id);
+      const data = await resp.json();
+      if(!resp.ok){
+        throw new Error(data.error || 'Evento não encontrado.');
+      }
+      draft = normalizeDraft(data);
+      editingEventId = id;
+      renderPreviewAll();
+      showView('preview');
+      publishBtn.textContent = 'Salvar alterações';
+    } catch(err){
+      importError.textContent = err.message || 'Não consegui carregar esse evento pra editar.';
+      importError.hidden = false;
+      showView('import');
+      history.pushState({}, '', '/');
+    }
+  }
+
+  async function showHistoryView(){
+    if(!currentUser){
+      showView('login');
+      loginStatus.textContent = 'Faça login pra ver seus eventos publicados.';
+      loginStatus.hidden = false;
+      return;
+    }
+    historyList.innerHTML = '<div class="history-empty">Carregando…</div>';
+    showView('history');
+    try {
+      const token = await accessToken();
+      const resp = await fetch('/api/events', { headers: { Authorization: 'Bearer ' + token } });
+      const result = await resp.json();
+      if(!resp.ok){
+        throw new Error(result.error || 'Erro ao carregar histórico.');
+      }
+      renderHistoryList(result.events || []);
+    } catch(err){
+      historyList.innerHTML = '<div class="history-empty">Não consegui carregar seu histórico (' + escapeHTML(err.message || 'erro') + ').</div>';
+    }
+  }
+
+  function renderHistoryList(events){
+    if(!events.length){
+      historyList.innerHTML = '<div class="history-empty">Você ainda não publicou nenhum roteiro.</div>';
+      return;
+    }
+    historyList.innerHTML = events.map(function(ev){
+      const date = new Date(ev.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      return (
+        '<div class="history-card">'+
+          '<div>'+
+            '<div class="history-title">'+escapeHTML(ev.event_title)+'</div>'+
+            '<div class="history-meta">'+ev.scene_count+' cenas · publicado em '+date+'</div>'+
+          '</div>'+
+          '<div class="history-actions">'+
+            '<a class="btn" href="/e/'+encodeURIComponent(ev.id)+'">Ver</a>'+
+            '<a class="btn btn-primary" href="/e/'+encodeURIComponent(ev.id)+'/editar">Editar</a>'+
+          '</div>'+
+        '</div>'
+      );
+    }).join('');
   }
 
   function render(){
@@ -566,8 +679,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   function updateAll(){
-    const doneIds = Object.keys(recorded).map(Number);
-    const doneCount = doneIds.length;
+    const doneCount = Object.keys(recorded).length;
     const total = CONTENT.length;
     const pct = total ? Math.round((doneCount/total)*100) : 0;
 
@@ -641,7 +753,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   function resetAllProgress(){
-    Object.keys(recorded).forEach(id => applyRecord(Number(id), null));
+    Object.keys(recorded).forEach(id => applyRecord(id, null));
     Object.keys(missionsDone).forEach(key => applyMissionKey(key, false));
   }
 
@@ -672,7 +784,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   document.addEventListener('click', function(e){
     const recBtn = e.target.closest('[data-action="toggle"]');
-    if(recBtn){ toggleCard(Number(recBtn.dataset.id)); return; }
+    if(recBtn){ toggleCard(recBtn.dataset.id); return; }
 
     const chip = e.target.closest('.mission-chip');
     if(chip){ toggleMission(chip.dataset.cat, Number(chip.dataset.idx)); return; }
@@ -707,7 +819,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       } else if(action === 'add-scene'){
         const phaseIdx = Number(structBtn.dataset.phaseIdx);
         const phase = draft.phases[phaseIdx];
-        draft.scenes.push({ phase: phase.key, title: 'Nova cena', icon: 'flag', formato: 'Story ao vivo', capture: [], speech: '', can: [], cannot: [] });
+        draft.scenes.push({ id: 'cena_' + Math.random().toString(36).slice(2, 8), phase: phase.key, title: 'Nova cena', icon: 'flag', formato: 'Story ao vivo', capture: [], speech: '', can: [], cannot: [] });
         renderPreviewAll();
       } else if(action === 'remove-scene'){
         draft.scenes.splice(idx, 1);
@@ -759,5 +871,103 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   });
 
-  loadEventFromUrl();
+  // ---------- autenticação ----------
+
+  function updateAuthUI(){
+    authStripLoggedOut.hidden = !!currentUser;
+    authStripLoggedIn.hidden = !currentUser;
+    if(currentUser) authStripEmail.textContent = currentUser.email || '';
+    updateEditLinkVisibility();
+  }
+
+  async function accessToken(){
+    const { data } = await sb.auth.getSession();
+    return data.session ? data.session.access_token : null;
+  }
+
+  function restorePendingDraftIfAny(){
+    if(window.location.pathname !== '/') return false;
+    const pending = localStorage.getItem(PENDING_DRAFT_KEY);
+    if(!currentUser || !pending) return false;
+    localStorage.removeItem(PENDING_DRAFT_KEY);
+    let parsed;
+    try {
+      parsed = JSON.parse(pending);
+    } catch(err){
+      return false;
+    }
+    // formato { draft, editingEventId }; aceita o formato antigo (só o draft) também
+    const hasWrapper = parsed && typeof parsed === 'object' && 'draft' in parsed;
+    draft = hasWrapper ? parsed.draft : parsed;
+    editingEventId = hasWrapper ? (parsed.editingEventId || null) : null;
+    publishBtn.textContent = editingEventId ? 'Salvar alterações' : 'Publicar checklist';
+    renderPreviewAll();
+    showView('preview');
+    return true;
+  }
+
+  authStripLoginBtn.addEventListener('click', function(){ showView('login'); });
+
+  loginBackBtn.addEventListener('click', function(){ showView('import'); });
+
+  loginSubmitBtn.addEventListener('click', async function(){
+    const email = loginEmailInput.value.trim();
+    loginStatus.hidden = true;
+    if(!email){
+      loginStatus.textContent = 'Digite um email válido.';
+      loginStatus.hidden = false;
+      return;
+    }
+    loginSubmitBtn.disabled = true;
+    loginSubmitBtn.textContent = 'Enviando…';
+    try {
+      const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin + '/' } });
+      loginStatus.textContent = error ? (error.message || 'Erro ao enviar o link.') : 'Link enviado! Confira seu email (' + email + ').';
+      loginStatus.hidden = false;
+    } finally {
+      loginSubmitBtn.disabled = false;
+      loginSubmitBtn.textContent = 'Enviar link de acesso';
+    }
+  });
+
+  authStripLogoutBtn.addEventListener('click', async function(){
+    await sb.auth.signOut();
+    history.pushState({}, '', '/');
+    showView('import');
+  });
+
+  historyNewBtn.addEventListener('click', function(){
+    history.pushState({}, '', '/');
+    showView('import');
+  });
+
+  // ---------- roteamento ----------
+
+  function route(){
+    if(restorePendingDraftIfAny()) return;
+    const path = window.location.pathname;
+    let m;
+    if((m = path.match(/^\/e\/([a-zA-Z0-9-]+)\/editar$/))){ loadEventForEdit(m[1]); return; }
+    if(path === '/historico'){ showHistoryView(); return; }
+    if((m = path.match(/^\/e\/([a-zA-Z0-9-]+)$/))){ loadEventFromUrl(m[1]); return; }
+    showView('import');
+  }
+
+  window.addEventListener('popstate', route);
+
+  async function initAuth(){
+    const cfg = await fetch('/api/config').then(r => r.json());
+    sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+    const { data: { session } } = await sb.auth.getSession();
+    currentUser = session?.user || null;
+    updateAuthUI();
+    sb.auth.onAuthStateChange(function(_evt, session){
+      currentUser = session?.user || null;
+      updateAuthUI();
+      restorePendingDraftIfAny();
+    });
+    route();
+  }
+
+  initAuth();
 })();
