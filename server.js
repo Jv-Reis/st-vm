@@ -8,8 +8,27 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+app.set('trust proxy', true); // necessário pra req.ip refletir o IP real por trás do proxy do Render
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Rate limit simples em memória (1 instância, sem Redis) — protege a cota
+// gratuita do Gemini de abuso, já que /api/parse-roteiro é público (sem login).
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const RATE_LIMIT_MAX = 10;
+const rateLimitHits = new Map(); // ip -> timestamps[]
+
+function rateLimit(req, res, next) {
+  const ip = req.ip || 'unknown';
+  const now = Date.now();
+  const hits = (rateLimitHits.get(ip) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (hits.length >= RATE_LIMIT_MAX) {
+    return res.status(429).json({ error: 'Muitas gerações em pouco tempo. Espere alguns minutos e tente de novo.' });
+  }
+  hits.push(now);
+  rateLimitHits.set(ip, hits);
+  next();
+}
 
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY)
@@ -131,7 +150,7 @@ Saída estruturada equivalente (um item de "scenes"):
 
 Responda SOMENTE com o JSON estruturado, seguindo o schema fornecido.`;
 
-app.post('/api/parse-roteiro', async (req, res) => {
+app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
   const { text } = req.body || {};
 
   if (!text || typeof text !== 'string' || text.trim().length < 20) {
