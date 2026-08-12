@@ -107,6 +107,6 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 
 ## Próximos passos
 
-1. Testar a experiência em celular de verdade (viewport pequeno, toque) — só foi validada em navegador desktop até aqui, mas é o dispositivo real de uso em campo.
+1. Testar num celular de verdade — a experiência mobile já foi validada por emulação (375×812, overflow, alvos de toque nos botões principais) e alguns problemas foram corrigidos, mas emulação não é 100% igual a testar no aparelho/rede/condições reais de um evento.
 2. Convidar a equipe pra usar num evento real e coletar feedback antes de adicionar mais coisa.
 3. Itens de manutenção: id estável em itens de missão, limpeza do log de progresso.
