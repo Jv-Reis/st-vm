@@ -13,6 +13,7 @@ Festa: mostrar a decoração pronta (mesmo ângulo do salão vazio), pista lotad
 
 Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de emoção, um abraço apertado, a noiva rindo à toa, e a transformação do salão vazio pro salão pronto.`;
 
+  const loadingView = document.getElementById('loadingView');
   const importView = document.getElementById('importView');
   const previewView = document.getElementById('previewView');
   const appView = document.getElementById('appView');
@@ -40,10 +41,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const reportView = document.getElementById('reportView');
   const reportContent = document.getElementById('reportContent');
 
-  const VIEWS = { import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView };
+  const VIEWS = { loading: loadingView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView };
   function showView(name){
     Object.keys(VIEWS).forEach(key => { VIEWS[key].hidden = key !== name; });
-    authStrip.hidden = (name === 'app' || name === 'report');
+    authStrip.hidden = (name === 'app' || name === 'report' || name === 'loading');
     window.scrollTo(0, 0);
   }
 
