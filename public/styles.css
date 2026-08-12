@@ -165,8 +165,11 @@ a{color:inherit;}
 .progress-fill{height:100%; width:0%; border-radius:999px; background:var(--amber); transition:width .5s cubic-bezier(.4,0,.2,1); position:relative;}
 .progress-track::after{content:''; position:absolute; inset:0; background:repeating-linear-gradient(90deg, transparent 0 22px, rgba(0,0,0,0.28) 22px 23px); pointer-events:none;}
 
-.phase-nav{display:flex; gap:8px; margin-top:16px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none;}
-.phase-nav::-webkit-scrollbar{display:none;}
+.phase-nav{display:flex; gap:8px; margin-top:16px; overflow-x:auto; padding-bottom:10px; scrollbar-width:thin; scrollbar-color:var(--amber) transparent;}
+.phase-nav::-webkit-scrollbar{height:6px;}
+.phase-nav::-webkit-scrollbar-track{background:transparent;}
+.phase-nav::-webkit-scrollbar-thumb{background:var(--border-strong); border-radius:999px;}
+.phase-nav::-webkit-scrollbar-thumb:hover{background:var(--amber);}
 .phase-pill{flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; border:1px solid var(--border); background:var(--surface); text-decoration:none; color:var(--text-muted); font-family:var(--font-mono); font-size:0.74rem; white-space:nowrap; transition:.15s ease;}
 .phase-pill .icon{width:14px; height:14px;}
 .phase-pill:hover{border-color:var(--border-strong); color:var(--text);}
