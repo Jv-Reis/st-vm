@@ -73,6 +73,21 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 7. Lembrete do plano free: se ninguém acessar por 15 minutos, o serviço "dorme" e o próximo acesso demora uns 30-50s pra responder (depois volta ao normal). A IA e o banco não têm esse problema, é só o servidor "acordando".
 8. Não esqueça de adicionar a URL de produção (ex: `https://captura-checklist.onrender.com`) nos Redirect URLs do Supabase (Authentication → URL Configuration), senão o magic link só funciona em `localhost`.
 
+## Manter o site acordado (Google Apps Script)
+
+✅ Já configurado. O plano free do Render dorme depois de 15 min sem acesso (item 7 acima) — pra evitar que alguém em campo caia bem nesse momento e fique esperando o servidor acordar, um script no Google Apps Script bate na raiz do site a cada 10 minutos, 24h por dia, de graça, usando a conta Google já existente (sem criar cadastro em outro serviço).
+
+**Script** (em [script.google.com](https://script.google.com), projeto próprio):
+```javascript
+function pingCaptura() {
+  UrlFetchApp.fetch('https://captura-checklist.onrender.com/', { muteHttpExceptions: true });
+}
+```
+
+**Configuração do gatilho:** no projeto do Apps Script → ícone de relógio (Gatilhos) → Adicionar gatilho → função `pingCaptura`, origem "Baseado em tempo", tipo "Timer de minutos", intervalo "A cada 10 minutos". Autorizar o script a fazer requisições externas na primeira execução (prompt normal do próprio Google, é o script pedindo permissão dentro da conta de quem o criou).
+
+Bate só na raiz (`/`) — não consome cota do Gemini nem faz nenhuma escrita no banco, é só o suficiente pra manter o processo do Render vivo.
+
 ## Estrutura do projeto
 
 ```
@@ -92,6 +107,6 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 
 ## Próximos passos
 
-1. Testar o fluxo de login/publicar/histórico/editar com email real (só o dono da conta consegue).
+1. Testar a experiência em celular de verdade (viewport pequeno, toque) — só foi validada em navegador desktop até aqui, mas é o dispositivo real de uso em campo.
 2. Convidar a equipe pra usar num evento real e coletar feedback antes de adicionar mais coisa.
 3. Itens de manutenção: id estável em itens de missão, limpeza do log de progresso.
