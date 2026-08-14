@@ -153,7 +153,7 @@ a{color:inherit;}
 .event-sub{font-family:var(--font-mono); font-size:0.72rem; color:var(--text-faint); margin-top:4px;}
 
 .event-link-row{margin-top:14px;}
-.event-link-box{display:flex; gap:8px;}
+.event-link-box{display:flex; gap:8px; flex-wrap:wrap;}
 .event-link-input{flex:1 1 auto; min-width:0; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-muted); font-family:var(--font-mono); font-size:0.78rem; padding:8px 12px;}
 .event-link-box .btn{flex:0 0 auto; padding:8px 16px;}
 

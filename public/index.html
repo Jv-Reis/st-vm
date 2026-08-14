@@ -80,6 +80,16 @@
       <span class="field-label">Nome do evento</span>
       <input class="field-input" id="previewEventTitle" type="text" maxlength="70">
     </div>
+    <div class="field-grid field-row">
+      <div>
+        <span class="field-label">Data e hora do evento (opcional)</span>
+        <input class="field-input" id="previewEventDate" type="datetime-local">
+      </div>
+      <div>
+        <span class="field-label">Local (opcional)</span>
+        <input class="field-input" id="previewEventLocation" type="text" maxlength="120" placeholder="Endereço ou nome do espaço">
+      </div>
+    </div>
 
     <div id="previewPhasesContainer"></div>
     <button class="add-btn" id="addPhaseBtn" type="button">+ Adicionar fase</button>
@@ -188,6 +198,7 @@
         <div class="event-link-box">
           <input class="event-link-input" id="eventLinkInput" type="text" readonly aria-label="Link do evento">
           <button class="btn" id="copyLinkBtn" type="button">Copiar</button>
+          <a class="btn" id="calendarLinkBtn" href="#" target="_blank" rel="noopener" hidden>📅 Google Calendar</a>
         </div>
       </div>
 

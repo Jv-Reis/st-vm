@@ -196,13 +196,15 @@ app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
 });
 
 function validEventPayload(body) {
-  const { event_title, phases, scenes, missions } = body || {};
+  const { event_title, phases, scenes, missions, event_date, event_location } = body || {};
   if (!Array.isArray(scenes) || !scenes.length) return null;
   return {
     event_title: event_title || 'Evento sem nome',
     phases: phases || [],
     scenes,
-    missions: missions || []
+    missions: missions || [],
+    event_date: event_date || '',
+    event_location: event_location || ''
   };
 }
 

@@ -30,12 +30,13 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 1. Escreva o roteiro do jeito que quiser — em qualquer editor (Google Docs, Notion, bloco de notas, ChatGPT, o que for) — e copie o texto todo.
 2. Cole na caixa de texto da tela inicial. (Ou clique em "Usar roteiro de exemplo" pra testar sem ter um roteiro em mãos.)
 3. Clique em "Gerar checklist". A IA organiza o texto em fases, cenas, o que capturar, fala sugerida e regras de pode/não pode.
-4. **Revise na prévia**: ajuste título, textos, ícones e formato de qualquer campo; reordene ou remova cenas e fases (setas ↑/↓ e ✕); adicione cena/fase/categoria de missão manualmente; reatribua uma cena pra outra fase pelo seletor "Fase".
+4. **Revise na prévia**: ajuste título, textos, ícones e formato de qualquer campo; reordene ou remova cenas e fases (setas ↑/↓ e ✕); adicione cena/fase/categoria de missão manualmente; reatribua uma cena pra outra fase pelo seletor "Fase". Preencher **data/hora e local** (ambos opcionais) libera o botão de Google Calendar depois de publicar.
 5. Clique em **"Publicar checklist"** — o evento é salvo no banco e você recebe um link (`/e/algumId`) mostrado no topo da página. Copie e mande pra equipe.
 6. Use a checklist em campo: marque "Gravar" em cada cena conforme captura, acompanhe o progresso geral e por fase, e marque as "missões" (momentos soltos sem ordem fixa) quando flagrar.
 7. Qualquer pessoa que abrir o link do evento carrega o mesmo roteiro direto na checklist (sem precisar colar/gerar de novo).
 8. "← Novo roteiro" volta pra tela de importação sem perder o texto colado atual.
 9. **"📄 Relatório"** no topo da checklist gera um resumo (cenas capturadas, horários, missões flagradas) pra imprimir ou salvar como PDF — funciona a qualquer momento, evento completo ou não.
+10. **"📅 Google Calendar"** aparece ao lado do link do evento se a data foi preenchida — abre o Google Calendar já preenchido (título, data, local, link de volta pro checklist na descrição). Cada pessoa que clicar salva na própria agenda; não é um convite automático nem exige login com Google.
 
 ## Login, histórico e edição
 
@@ -109,4 +110,6 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 
 1. Testar num celular de verdade — a experiência mobile já foi validada por emulação (375×812, overflow, alvos de toque nos botões principais) e alguns problemas foram corrigidos, mas emulação não é 100% igual a testar no aparelho/rede/condições reais de um evento.
 2. Convidar a equipe pra usar num evento real e coletar feedback antes de adicionar mais coisa.
-3. Itens de manutenção: id estável em itens de missão, limpeza do log de progresso.
+3. Google Calendar — hoje é só o link "adicionar à minha agenda" (cada um clica por si). Se sentir falta de convidar a equipe toda de uma vez, dá pra adicionar um campo de emails que pré-preenche os convidados na mesma URL, sem precisar de login com Google.
+4. Ideia em aberto: criar o evento (nome + data) antes de ter o roteiro pronto, pra reservar a data com antecedência e só fechar o conteúdo depois.
+5. Itens de manutenção: id estável em itens de missão, limpeza do log de progresso.

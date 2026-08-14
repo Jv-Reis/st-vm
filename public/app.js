@@ -40,6 +40,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const editEventLink = document.getElementById('editEventLink');
   const reportView = document.getElementById('reportView');
   const reportContent = document.getElementById('reportContent');
+  const previewEventDate = document.getElementById('previewEventDate');
+  const previewEventLocation = document.getElementById('previewEventLocation');
+  const calendarLinkBtn = document.getElementById('calendarLinkBtn');
 
   const VIEWS = { loading: loadingView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView };
   function showView(name){
@@ -55,6 +58,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const recorded = {};
   const missionsDone = {};
   let currentEventId = null;
+  let currentEventDate = '';
+  let currentEventLocation = '';
   let currentOwnerId = null;
   let editingEventId = null;
   let progressStream = null;
@@ -127,6 +132,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function normalizeDraft(data){
     return {
       event_title: data.event_title || 'Evento sem nome',
+      event_date: data.event_date || '',
+      event_location: data.event_location || '',
       phases: (data.phases || []).map(p => ({
         key: p.key || ('fase_' + Math.random().toString(36).slice(2, 8)),
         label: p.label || 'Fase',
@@ -162,6 +169,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function renderPreviewAll(){
     document.getElementById('previewEventTitle').value = draft.event_title;
+    previewEventDate.value = draft.event_date || '';
+    previewEventLocation.value = draft.event_location || '';
 
     previewPhasesContainer.innerHTML = draft.phases.map((phase, pIdx) => {
       const scenesInPhase = draft.scenes
@@ -282,6 +291,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   document.getElementById('previewEventTitle').addEventListener('input', function(e){
     if(draft) draft.event_title = e.target.value;
+  });
+
+  previewEventDate.addEventListener('input', function(e){
+    if(draft) draft.event_date = e.target.value;
+  });
+
+  previewEventLocation.addEventListener('input', function(e){
+    if(draft) draft.event_location = e.target.value;
   });
 
   document.getElementById('addPhaseBtn').addEventListener('click', function(){
@@ -419,6 +436,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
     document.getElementById('eventTitle').value = data.event_title || 'Evento sem nome';
     document.getElementById('eventSub').textContent = CONTENT.length + ' cenas · ' + PHASES.length + ' fases — roteiro gerado a partir do texto colado';
+    currentEventDate = data.event_date || '';
+    currentEventLocation = data.event_location || '';
 
     render();
     renderMissions();
@@ -444,14 +463,39 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     history.pushState({}, '', '/');
   }
 
+  function buildGoogleCalendarUrl(title, startLocalStr, location, eventLink){
+    if(!startLocalStr) return null;
+    const start = new Date(startLocalStr);
+    if(isNaN(start.getTime())) return null;
+    const end = new Date(start.getTime() + 4 * 60 * 60 * 1000);
+    const fmt = d => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: title || 'Evento',
+      dates: fmt(start) + '/' + fmt(end),
+      details: 'Checklist do CAPTURA: ' + eventLink
+    });
+    if(location) params.set('location', location);
+    return 'https://calendar.google.com/calendar/render?' + params.toString();
+  }
+
   function showEventLink(id){
     const row = document.getElementById('eventLinkRow');
     const input = document.getElementById('eventLinkInput');
-    input.value = window.location.origin + '/e/' + id;
+    const link = window.location.origin + '/e/' + id;
+    input.value = link;
     row.hidden = false;
     currentEventId = id;
     connectProgressStream(id);
     updateEditLinkVisibility();
+
+    const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventLocation, link);
+    if(calUrl){
+      calendarLinkBtn.href = calUrl;
+      calendarLinkBtn.hidden = false;
+    } else {
+      calendarLinkBtn.hidden = true;
+    }
   }
 
   function updateEditLinkVisibility(){
@@ -465,6 +509,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function hideEventLink(){
     document.getElementById('eventLinkRow').hidden = true;
+    calendarLinkBtn.hidden = true;
+    currentEventDate = '';
+    currentEventLocation = '';
   }
 
   // ---------- progresso em tempo real ----------
