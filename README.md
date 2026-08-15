@@ -113,5 +113,4 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 1. Testar num celular de verdade — a experiência mobile já foi validada por emulação (375×812, overflow, alvos de toque nos botões principais) e alguns problemas foram corrigidos, mas emulação não é 100% igual a testar no aparelho/rede/condições reais de um evento.
 2. Convidar a equipe pra usar num evento real e coletar feedback antes de adicionar mais coisa.
 3. Google Calendar — hoje é só o link "adicionar à minha agenda" (cada um clica por si). Se sentir falta de convidar a equipe toda de uma vez, dá pra adicionar um campo de emails que pré-preenche os convidados na mesma URL, sem precisar de login com Google.
-4. Ideia em aberto: criar o evento (nome + data) antes de ter o roteiro pronto, pra reservar a data com antecedência e só fechar o conteúdo depois.
-5. Itens de manutenção: id estável em itens de missão, limpeza do log de progresso.
+4. Itens de manutenção: id estável em itens de missão, limpeza do log de progresso.
