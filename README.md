@@ -45,6 +45,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 - **"Meus eventos"** (`/historico`) lista tudo que você já publicou, com link pra ver ou editar cada um.
 - Editar um evento **atualiza o mesmo link** (`/e/:id`) — a equipe que já tem o link não precisa trocar nada.
 - Eventos publicados antes dessa mudança continuam funcionando normalmente pra quem só usa o link (ver, marcar "Gravar"), mas não aparecem no histórico de ninguém nem podem ser editados (não têm dono).
+- **"Criar evento sem roteiro (reservar a data)"**, na tela inicial, pula direto pra prévia sem gerar nada — dá pra preencher só nome/data/local e publicar (confirma antes, já que não tem cena nenhuma). O evento fica com o link e o Google Calendar funcionando na hora; aparece no histórico como "Rascunho, sem roteiro ainda". Depois, em "Editar" → "← Colar outro roteiro", dá pra colar o texto e gerar as cenas via IA — atualiza o mesmo evento (mesmo link), não cria um novo.
 
 ## O que NÃO tem ainda
 

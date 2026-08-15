@@ -212,7 +212,7 @@ app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
 
 function validEventPayload(body) {
   const { event_title, phases, scenes, missions, event_date, event_end_date, event_location } = body || {};
-  if (!Array.isArray(scenes) || !scenes.length) return null;
+  if (!Array.isArray(scenes)) return null;
   return {
     event_title: event_title || 'Evento sem nome',
     phases: phases || [],
@@ -227,7 +227,7 @@ function validEventPayload(body) {
 app.post('/api/events', requireAuth, async (req, res) => {
   const payload = validEventPayload(req.body);
   if (!payload) {
-    return res.status(400).json({ error: 'O evento precisa ter pelo menos uma cena antes de publicar.' });
+    return res.status(400).json({ error: 'Formato de evento inválido.' });
   }
 
   const id = crypto.randomUUID().split('-')[0];
@@ -243,7 +243,7 @@ app.post('/api/events', requireAuth, async (req, res) => {
 app.patch('/api/events/:id', requireAuth, async (req, res) => {
   const payload = validEventPayload(req.body);
   if (!payload) {
-    return res.status(400).json({ error: 'O evento precisa ter pelo menos uma cena.' });
+    return res.status(400).json({ error: 'Formato de evento inválido.' });
   }
 
   const db = scopedClient(req.token);

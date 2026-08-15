@@ -22,6 +22,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const roteiroInput = document.getElementById('roteiroInput');
   const generateBtn = document.getElementById('generateBtn');
   const exampleBtn = document.getElementById('exampleBtn');
+  const quickCreateBtn = document.getElementById('quickCreateBtn');
   const importError = document.getElementById('importError');
   const previewPhasesContainer = document.getElementById('previewPhasesContainer');
   const previewMissionsContainer = document.getElementById('previewMissionsContainer');
@@ -98,6 +99,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     roteiroInput.focus();
   });
 
+  quickCreateBtn.addEventListener('click', function(){
+    loadPreview({ event_title: '', phases: [], scenes: [], missions: [] });
+  });
+
   generateBtn.addEventListener('click', async function(){
     const text = roteiroInput.value.trim();
     importError.hidden = true;
@@ -165,8 +170,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function loadPreview(data){
     draft = normalizeDraft(data);
-    editingEventId = null;
-    publishBtn.textContent = 'Publicar checklist';
+    publishBtn.textContent = editingEventId ? 'Salvar alterações' : 'Publicar checklist';
     renderPreviewAll();
     showView('preview');
   }
@@ -343,8 +347,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const publishBtn = document.getElementById('publishBtn');
   publishBtn.addEventListener('click', async function(){
     draft.event_title = document.getElementById('previewEventTitle').value.trim() || 'Evento sem nome';
-    if(!draft.scenes.length){
-      alert('Adicione pelo menos uma cena antes de publicar.');
+    if(!draft.scenes.length && !confirm('Publicar sem nenhuma cena? Você pode colar/gerar o roteiro depois, no mesmo link.')){
       return;
     }
 
@@ -485,6 +488,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     hideEventLink();
     disconnectProgressStream();
     currentOwnerId = null;
+    editingEventId = null;
     updateEditLinkVisibility();
     history.pushState({}, '', '/');
   }
@@ -685,11 +689,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
     historyList.innerHTML = events.map(function(ev){
       const date = new Date(ev.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      const meta = ev.scene_count ? (ev.scene_count + ' cenas · publicado em ' + date) : ('Rascunho, sem roteiro ainda · reservado em ' + date);
       return (
         '<div class="history-card">'+
           '<div>'+
             '<div class="history-title">'+escapeHTML(ev.event_title)+'</div>'+
-            '<div class="history-meta">'+ev.scene_count+' cenas · publicado em '+date+'</div>'+
+            '<div class="history-meta">'+meta+'</div>'+
           '</div>'+
           '<div class="history-actions">'+
             '<a class="btn" href="/e/'+encodeURIComponent(ev.id)+'">Ver</a>'+
@@ -728,7 +733,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         '</a>';
     });
 
-    container.innerHTML = mainHTML;
+    container.innerHTML = CONTENT.length ? mainHTML : '<div class="history-empty">Este evento ainda não tem roteiro — volte aqui assim que a equipe adicionar.</div>';
     nav.innerHTML = navHTML;
     document.getElementById('totalCount').textContent = CONTENT.length;
   }
