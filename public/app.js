@@ -41,6 +41,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const reportView = document.getElementById('reportView');
   const reportContent = document.getElementById('reportContent');
   const previewEventDate = document.getElementById('previewEventDate');
+  const previewEventEndDate = document.getElementById('previewEventEndDate');
   const previewEventLocation = document.getElementById('previewEventLocation');
   const calendarLinkBtn = document.getElementById('calendarLinkBtn');
 
@@ -59,6 +60,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const missionsDone = {};
   let currentEventId = null;
   let currentEventDate = '';
+  let currentEventEndDate = '';
   let currentEventLocation = '';
   let currentOwnerId = null;
   let editingEventId = null;
@@ -133,6 +135,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     return {
       event_title: data.event_title || 'Evento sem nome',
       event_date: data.event_date || '',
+      event_end_date: data.event_end_date || '',
       event_location: data.event_location || '',
       phases: (data.phases || []).map(p => ({
         key: p.key || ('fase_' + Math.random().toString(36).slice(2, 8)),
@@ -170,6 +173,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function renderPreviewAll(){
     document.getElementById('previewEventTitle').value = draft.event_title;
     previewEventDate.value = draft.event_date || '';
+    previewEventEndDate.value = draft.event_end_date || '';
     previewEventLocation.value = draft.event_location || '';
 
     previewPhasesContainer.innerHTML = draft.phases.map((phase, pIdx) => {
@@ -295,6 +299,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   previewEventDate.addEventListener('input', function(e){
     if(draft) draft.event_date = e.target.value;
+  });
+
+  previewEventEndDate.addEventListener('input', function(e){
+    if(draft) draft.event_end_date = e.target.value;
   });
 
   previewEventLocation.addEventListener('input', function(e){
@@ -437,6 +445,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     document.getElementById('eventTitle').value = data.event_title || 'Evento sem nome';
     document.getElementById('eventSub').textContent = CONTENT.length + ' cenas · ' + PHASES.length + ' fases — roteiro gerado a partir do texto colado';
     currentEventDate = data.event_date || '';
+    currentEventEndDate = data.event_end_date || '';
     currentEventLocation = data.event_location || '';
 
     render();
@@ -463,11 +472,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     history.pushState({}, '', '/');
   }
 
-  function buildGoogleCalendarUrl(title, startLocalStr, location, eventLink){
+  function buildGoogleCalendarUrl(title, startLocalStr, endLocalStr, location, eventLink){
     if(!startLocalStr) return null;
     const start = new Date(startLocalStr);
     if(isNaN(start.getTime())) return null;
-    const end = new Date(start.getTime() + 4 * 60 * 60 * 1000);
+    let end = endLocalStr ? new Date(endLocalStr) : null;
+    if(!end || isNaN(end.getTime()) || end <= start){
+      end = new Date(start.getTime() + 4 * 60 * 60 * 1000);
+    }
     const fmt = d => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
     const params = new URLSearchParams({
       action: 'TEMPLATE',
@@ -489,7 +501,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     connectProgressStream(id);
     updateEditLinkVisibility();
 
-    const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventLocation, link);
+    const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventEndDate, currentEventLocation, link);
     if(calUrl){
       calendarLinkBtn.href = calUrl;
       calendarLinkBtn.hidden = false;
@@ -511,6 +523,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     document.getElementById('eventLinkRow').hidden = true;
     calendarLinkBtn.hidden = true;
     currentEventDate = '';
+    currentEventEndDate = '';
     currentEventLocation = '';
   }
 
