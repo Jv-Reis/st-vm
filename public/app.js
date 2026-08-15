@@ -51,7 +51,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const VIEWS = { loading: loadingView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView };
   function showView(name){
     Object.keys(VIEWS).forEach(key => { VIEWS[key].hidden = key !== name; });
-    authStrip.hidden = (name === 'app' || name === 'report' || name === 'loading');
+    authStrip.hidden = (name === 'report' || name === 'loading');
     window.scrollTo(0, 0);
   }
 

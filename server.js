@@ -269,9 +269,10 @@ app.get('/api/events', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
   }
 
+  const db = scopedClient(req.token);
   const [{ data: owned, error: ownedError }, { data: memberships, error: memberError }] = await Promise.all([
-    supabase.from('events').select('id, data, created_at').eq('owner_id', req.user.id),
-    supabase.from('event_members').select('event_id').eq('user_id', req.user.id)
+    db.from('events').select('id, data, created_at').eq('owner_id', req.user.id),
+    db.from('event_members').select('event_id').eq('user_id', req.user.id)
   ]);
 
   if (ownedError || memberError) {
@@ -282,7 +283,7 @@ app.get('/api/events', requireAuth, async (req, res) => {
   const memberIds = (memberships || []).map((m) => m.event_id).filter((id) => !owned.some((o) => o.id === id));
   let memberEvents = [];
   if (memberIds.length) {
-    const { data, error } = await supabase.from('events').select('id, data, created_at').in('id', memberIds);
+    const { data, error } = await db.from('events').select('id, data, created_at').in('id', memberIds);
     if (error) {
       console.error('Erro ao listar eventos salvos:', error);
       return res.status(500).json({ error: 'Não consegui carregar seu histórico.' });
