@@ -39,6 +39,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const historyList = document.getElementById('historyList');
   const historyNewBtn = document.getElementById('historyNewBtn');
   const editEventLink = document.getElementById('editEventLink');
+  const saveEventBtn = document.getElementById('saveEventBtn');
   const reportView = document.getElementById('reportView');
   const reportContent = document.getElementById('reportContent');
   const previewEventDate = document.getElementById('previewEventDate');
@@ -66,6 +67,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let currentEventLocation = '';
   let currentOwnerId = null;
   let editingEventId = null;
+  let eventSaved = false;
   let progressStream = null;
   let streamHadError = false;
 
@@ -521,6 +523,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     currentEventId = id;
     connectProgressStream(id);
     updateEditLinkVisibility();
+    refreshSaveButton();
 
     const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventEndDate, currentEventLocation, link);
     if(calUrl){
@@ -540,9 +543,52 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
+  function setSaveButtonState(saved){
+    eventSaved = saved;
+    saveEventBtn.textContent = saved ? '✓ Salvo (clique pra remover)' : '💾 Salvar nos meus eventos';
+  }
+
+  async function refreshSaveButton(){
+    const eligible = currentEventId && currentUser && !(currentOwnerId && currentUser.id === currentOwnerId);
+    if(!eligible){
+      saveEventBtn.hidden = true;
+      return;
+    }
+    saveEventBtn.hidden = false;
+    try {
+      const token = await accessToken();
+      if(!token) { saveEventBtn.hidden = true; return; }
+      const resp = await fetch('/api/events/' + currentEventId + '/save', { headers: { Authorization: 'Bearer ' + token } });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error || 'Erro.');
+      setSaveButtonState(!!result.saved);
+    } catch(err){
+      saveEventBtn.hidden = true;
+    }
+  }
+
+  saveEventBtn.addEventListener('click', async function(){
+    saveEventBtn.disabled = true;
+    try {
+      const token = await accessToken();
+      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+      const method = eventSaved ? 'DELETE' : 'POST';
+      const resp = await fetch('/api/events/' + currentEventId + '/save', { method, headers: { Authorization: 'Bearer ' + token } });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error || 'Erro ao salvar.');
+      setSaveButtonState(result.saved);
+    } catch(err){
+      alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
+    } finally {
+      saveEventBtn.disabled = false;
+    }
+  });
+
   function hideEventLink(){
     document.getElementById('eventLinkRow').hidden = true;
     calendarLinkBtn.hidden = true;
+    saveEventBtn.hidden = true;
+    eventSaved = false;
     currentEventDate = '';
     currentEventEndDate = '';
     currentEventLocation = '';
@@ -689,7 +735,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
     historyList.innerHTML = events.map(function(ev){
       const date = new Date(ev.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-      const meta = ev.scene_count ? (ev.scene_count + ' cenas · publicado em ' + date) : ('Rascunho, sem roteiro ainda · reservado em ' + date);
+      let meta = ev.scene_count ? (ev.scene_count + ' cenas · publicado em ' + date) : ('Rascunho, sem roteiro ainda · reservado em ' + date);
+      if(!ev.is_owner) meta += ' · salvo, não é seu';
+      const editLink = ev.is_owner ? '<a class="btn btn-primary" href="/e/'+encodeURIComponent(ev.id)+'/editar">Editar</a>' : '';
       return (
         '<div class="history-card">'+
           '<div>'+
@@ -698,7 +746,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
           '</div>'+
           '<div class="history-actions">'+
             '<a class="btn" href="/e/'+encodeURIComponent(ev.id)+'">Ver</a>'+
-            '<a class="btn btn-primary" href="/e/'+encodeURIComponent(ev.id)+'/editar">Editar</a>'+
+            editLink+
           '</div>'+
         '</div>'
       );
@@ -1028,6 +1076,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     authStripLoggedIn.hidden = !currentUser;
     if(currentUser) authStripEmail.textContent = currentUser.email || '';
     updateEditLinkVisibility();
+    refreshSaveButton();
   }
 
   async function accessToken(){

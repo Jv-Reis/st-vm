@@ -269,25 +269,80 @@ app.get('/api/events', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
   }
 
-  const { data, error } = await supabase
-    .from('events')
-    .select('id, data, created_at')
-    .eq('owner_id', req.user.id)
-    .order('created_at', { ascending: false });
+  const [{ data: owned, error: ownedError }, { data: memberships, error: memberError }] = await Promise.all([
+    supabase.from('events').select('id, data, created_at').eq('owner_id', req.user.id),
+    supabase.from('event_members').select('event_id').eq('user_id', req.user.id)
+  ]);
 
-  if (error) {
-    console.error('Erro ao listar eventos:', error);
+  if (ownedError || memberError) {
+    console.error('Erro ao listar eventos:', ownedError || memberError);
     return res.status(500).json({ error: 'Não consegui carregar seu histórico.' });
   }
 
+  const memberIds = (memberships || []).map((m) => m.event_id).filter((id) => !owned.some((o) => o.id === id));
+  let memberEvents = [];
+  if (memberIds.length) {
+    const { data, error } = await supabase.from('events').select('id, data, created_at').in('id', memberIds);
+    if (error) {
+      console.error('Erro ao listar eventos salvos:', error);
+      return res.status(500).json({ error: 'Não consegui carregar seu histórico.' });
+    }
+    memberEvents = data || [];
+  }
+
+  const events = [
+    ...owned.map((row) => ({ ...row, is_owner: true })),
+    ...memberEvents.map((row) => ({ ...row, is_owner: false }))
+  ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
   res.json({
-    events: (data || []).map((row) => ({
+    events: events.map((row) => ({
       id: row.id,
       event_title: row.data?.event_title || 'Evento sem nome',
       scene_count: Array.isArray(row.data?.scenes) ? row.data.scenes.length : 0,
-      created_at: row.created_at
+      created_at: row.created_at,
+      is_owner: row.is_owner
     }))
   });
+});
+
+app.get('/api/events/:id/save', requireAuth, async (req, res) => {
+  const db = scopedClient(req.token);
+  const { data, error } = await db
+    .from('event_members')
+    .select('event_id')
+    .eq('event_id', req.params.id)
+    .eq('user_id', req.user.id)
+    .maybeSingle();
+  if (error) {
+    console.error('Erro ao checar evento salvo:', error);
+    return res.status(500).json({ error: 'Não consegui checar.' });
+  }
+  res.json({ saved: !!data });
+});
+
+app.post('/api/events/:id/save', requireAuth, async (req, res) => {
+  const db = scopedClient(req.token);
+  const { error } = await db.from('event_members').insert({ event_id: req.params.id, user_id: req.user.id });
+  if (error && error.code !== '23505') {
+    console.error('Erro ao salvar evento:', error);
+    return res.status(500).json({ error: 'Não consegui salvar esse evento na sua conta.' });
+  }
+  res.json({ saved: true });
+});
+
+app.delete('/api/events/:id/save', requireAuth, async (req, res) => {
+  const db = scopedClient(req.token);
+  const { error } = await db
+    .from('event_members')
+    .delete()
+    .eq('event_id', req.params.id)
+    .eq('user_id', req.user.id);
+  if (error) {
+    console.error('Erro ao remover evento salvo:', error);
+    return res.status(500).json({ error: 'Não consegui remover esse evento da sua conta.' });
+  }
+  res.json({ saved: false });
 });
 
 app.get('/api/events/:id', async (req, res) => {

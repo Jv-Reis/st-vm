@@ -46,6 +46,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 - Editar um evento **atualiza o mesmo link** (`/e/:id`) — a equipe que já tem o link não precisa trocar nada.
 - Eventos publicados antes dessa mudança continuam funcionando normalmente pra quem só usa o link (ver, marcar "Gravar"), mas não aparecem no histórico de ninguém nem podem ser editados (não têm dono).
 - **"Criar evento sem roteiro (reservar a data)"**, na tela inicial, pula direto pra prévia sem gerar nada — dá pra preencher só nome/data/local e publicar (confirma antes, já que não tem cena nenhuma). O evento fica com o link e o Google Calendar funcionando na hora; aparece no histórico como "Rascunho, sem roteiro ainda". Depois, em "Editar" → "← Colar outro roteiro", dá pra colar o texto e gerar as cenas via IA — atualiza o mesmo evento (mesmo link), não cria um novo.
+- **"💾 Salvar nos meus eventos"**, na checklist ao vivo, aparece pra quem está logado mas não é dono do evento (quem recebeu o link) — salva o evento no histórico dela também, sem virar dono nem poder editar. Clicar de novo remove. No histórico, esses eventos aparecem marcados como "salvo, não é seu" e sem o botão "Editar".
 
 ## O que NÃO tem ainda
 
@@ -105,6 +106,7 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 **Projeto Supabase:** `captura-checklist` (região sa-east-1 / São Paulo).
 - tabela `events` (`id`, `data` jsonb, `owner_id` uuid, `created_at`) — o roteiro publicado. SELECT liberado pra `anon` **e** `authenticated`; INSERT/UPDATE só do dono autenticado (`owner_id = auth.uid()`).
 - tabela `event_progress` (`id`, `event_id`, `action`, `payload` jsonb, `created_at`) — log append-only de cada "Gravar"/missão/reset, usado pra persistir e sincronizar o progresso entre dispositivos. Continua público (sem login), de propósito.
+- tabela `event_members` (`event_id`, `user_id`, `created_at`) — relação N:N de "eventos salvos por alguém que não é o dono" (botão "💾 Salvar nos meus eventos"). Todo autenticado só lê/insere/apaga a própria linha (`user_id = auth.uid()`); sem policy pra `anon`.
 - Auth: magic link por email (Supabase Auth), sem senha, sem provider externo.
 - **Pegadinha de RLS já corrigida:** a policy de SELECT foi criada só `to anon` no começo — funcionava pra ver a checklist (rota pública), mas quebrava silenciosamente o `PATCH /api/events/:id` pra quem estava logado, porque o `UPDATE ... RETURNING` também precisa de permissão de leitura pra devolver a linha, e usuário autenticado não tinha nenhuma policy de SELECT que valesse pra ele. A policy agora cobre `anon, authenticated`.
 
