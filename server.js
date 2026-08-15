@@ -150,6 +150,18 @@ Saída estruturada equivalente (um item de "scenes"):
 
 Responda SOMENTE com o JSON estruturado, seguindo o schema fornecido.`;
 
+async function generateWithRetry(ai, params, retries = 2, delayMs = 1000) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (err) {
+      const isTransient = err && (err.status === 503 || err.status === 429);
+      if (!isTransient || attempt >= retries) throw err;
+      await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
+}
+
 app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
   const { text } = req.body || {};
 
@@ -165,7 +177,7 @@ app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
 
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const response = await ai.models.generateContent({
+    const response = await generateWithRetry(ai, {
       model: 'gemini-flash-latest',
       contents: text,
       config: {
@@ -191,6 +203,9 @@ app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('Erro ao chamar a API do Gemini:', err);
+    if (err && (err.status === 503 || err.status === 429)) {
+      return res.status(503).json({ error: 'O Gemini está sobrecarregado no momento. Tente gerar de novo em alguns segundos.' });
+    }
     res.status(500).json({ error: 'Erro ao chamar a IA (Gemini). Verifique a GEMINI_API_KEY e a conexão.' });
   }
 });
