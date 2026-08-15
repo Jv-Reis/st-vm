@@ -102,9 +102,10 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 ```
 
 **Projeto Supabase:** `captura-checklist` (região sa-east-1 / São Paulo).
-- tabela `events` (`id`, `data` jsonb, `owner_id` uuid, `created_at`) — o roteiro publicado. SELECT pública; INSERT/UPDATE só do dono autenticado.
+- tabela `events` (`id`, `data` jsonb, `owner_id` uuid, `created_at`) — o roteiro publicado. SELECT liberado pra `anon` **e** `authenticated`; INSERT/UPDATE só do dono autenticado (`owner_id = auth.uid()`).
 - tabela `event_progress` (`id`, `event_id`, `action`, `payload` jsonb, `created_at`) — log append-only de cada "Gravar"/missão/reset, usado pra persistir e sincronizar o progresso entre dispositivos. Continua público (sem login), de propósito.
 - Auth: magic link por email (Supabase Auth), sem senha, sem provider externo.
+- **Pegadinha de RLS já corrigida:** a policy de SELECT foi criada só `to anon` no começo — funcionava pra ver a checklist (rota pública), mas quebrava silenciosamente o `PATCH /api/events/:id` pra quem estava logado, porque o `UPDATE ... RETURNING` também precisa de permissão de leitura pra devolver a linha, e usuário autenticado não tinha nenhuma policy de SELECT que valesse pra ele. A policy agora cobre `anon, authenticated`.
 
 ## Próximos passos
 
