@@ -103,6 +103,7 @@ a{color:inherit;}
 
 /* ---------- HISTORY ---------- */
 .history-card{display:flex; align-items:center; justify-content:space-between; gap:14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 20px; margin-bottom:12px; flex-wrap:wrap;}
+.history-card--saved{background:rgba(255,212,0,0.055); border-color:rgba(255,212,0,0.3);}
 .history-title{font-family:var(--font-display); font-weight:700; font-size:0.98rem;}
 .history-meta{font-family:var(--font-mono); font-size:0.72rem; color:var(--text-faint); margin-top:4px;}
 .history-actions{display:flex; gap:8px; flex:0 0 auto;}

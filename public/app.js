@@ -739,7 +739,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       if(!ev.is_owner) meta += ' · salvo, não é seu';
       const editLink = ev.is_owner ? '<a class="btn btn-primary" href="/e/'+encodeURIComponent(ev.id)+'/editar">Editar</a>' : '';
       return (
-        '<div class="history-card">'+
+        '<div class="history-card'+(ev.is_owner ? '' : ' history-card--saved')+'">'+
           '<div>'+
             '<div class="history-title">'+escapeHTML(ev.event_title)+'</div>'+
             '<div class="history-meta">'+meta+'</div>'+
