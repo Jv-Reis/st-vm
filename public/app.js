@@ -42,6 +42,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const reportContent = document.getElementById('reportContent');
   const previewEventDate = document.getElementById('previewEventDate');
   const previewEventEndDate = document.getElementById('previewEventEndDate');
+  const eventDateWarning = document.getElementById('eventDateWarning');
   const previewEventLocation = document.getElementById('previewEventLocation');
   const calendarLinkBtn = document.getElementById('calendarLinkBtn');
 
@@ -175,6 +176,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     previewEventDate.value = draft.event_date || '';
     previewEventEndDate.value = draft.event_end_date || '';
     previewEventLocation.value = draft.event_location || '';
+    validateEventDates();
 
     previewPhasesContainer.innerHTML = draft.phases.map((phase, pIdx) => {
       const scenesInPhase = draft.scenes
@@ -297,12 +299,27 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(draft) draft.event_title = e.target.value;
   });
 
+  function validateEventDates(){
+    const startVal = previewEventDate.value;
+    const endVal = previewEventEndDate.value;
+    if(!startVal || !endVal){
+      eventDateWarning.hidden = true;
+      return;
+    }
+    const start = new Date(startVal);
+    const end = new Date(endVal);
+    const invalid = isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start;
+    eventDateWarning.hidden = !invalid;
+  }
+
   previewEventDate.addEventListener('input', function(e){
     if(draft) draft.event_date = e.target.value;
+    validateEventDates();
   });
 
   previewEventEndDate.addEventListener('input', function(e){
     if(draft) draft.event_end_date = e.target.value;
+    validateEventDates();
   });
 
   previewEventLocation.addEventListener('input', function(e){

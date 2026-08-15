@@ -80,6 +80,7 @@ a{color:inherit;}
 .field-input:focus, .field-textarea:focus, .field-select:focus{outline:none; border-color:var(--amber);}
 .field-textarea{resize:vertical; min-height:60px; font-family:var(--font-mono); font-size:0.78rem;}
 .field-row{margin-bottom:10px;}
+.field-warning{background:var(--amber-soft); border:1px solid rgba(255,212,0,0.35); color:var(--amber); border-radius:var(--radius-sm); padding:8px 12px; font-size:0.78rem; line-height:1.4; margin-bottom:10px;}
 .field-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
 
 .icon-btn{background:none; border:1px solid var(--border); color:var(--text-faint); border-radius:8px; min-width:32px; height:32px; padding:0 8px; cursor:pointer; transition:.15s ease; display:inline-flex; align-items:center; justify-content:center; font-size:0.8rem;}
