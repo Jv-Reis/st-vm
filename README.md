@@ -47,6 +47,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 - Eventos publicados antes dessa mudança continuam funcionando normalmente pra quem só usa o link (ver, marcar "Gravar"), mas não aparecem no histórico de ninguém nem podem ser editados (não têm dono).
 - **"Criar evento sem roteiro (reservar a data)"**, na tela inicial, pula direto pra prévia sem gerar nada — dá pra preencher só nome/data/local e publicar (confirma antes, já que não tem cena nenhuma). O evento fica com o link e o Google Calendar funcionando na hora; aparece no histórico como "Rascunho, sem roteiro ainda". Depois, em "Editar" → "← Colar outro roteiro", dá pra colar o texto e gerar as cenas via IA — atualiza o mesmo evento (mesmo link), não cria um novo.
 - **"💾 Salvar nos meus eventos"**, na checklist ao vivo, aparece pra quem está logado mas não é dono do evento (quem recebeu o link) — salva o evento no histórico dela também, sem virar dono nem poder editar. Clicar de novo remove. No histórico, esses eventos aparecem marcados como "salvo, não é seu" e sem o botão "Editar".
+- **"🔒 Só você edita" / "🔓 Quem salvou também edita"**, na checklist ao vivo, aparece só pro dono — é um interruptor por evento: quando ligado, qualquer pessoa que tenha salvo aquele evento pode editá-lo também (não precisa virar dono nem receber convite individual); quando desligado, volta a ser só o dono. No histórico, quem ganhou edição assim aparece como "salvo · pode editar" e já vê o botão "Editar".
 
 ## O que NÃO tem ainda
 
@@ -104,7 +105,7 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 ```
 
 **Projeto Supabase:** `captura-checklist` (região sa-east-1 / São Paulo).
-- tabela `events` (`id`, `data` jsonb, `owner_id` uuid, `created_at`) — o roteiro publicado. SELECT liberado pra `anon` **e** `authenticated`; INSERT/UPDATE só do dono autenticado (`owner_id = auth.uid()`).
+- tabela `events` (`id`, `data` jsonb, `owner_id` uuid, `created_at`, `allow_member_edit` boolean) — o roteiro publicado. SELECT liberado pra `anon` **e** `authenticated`; INSERT só do dono; UPDATE do dono OU (se `allow_member_edit = true`) de quem tiver linha em `event_members` pra esse evento.
 - tabela `event_progress` (`id`, `event_id`, `action`, `payload` jsonb, `created_at`) — log append-only de cada "Gravar"/missão/reset, usado pra persistir e sincronizar o progresso entre dispositivos. Continua público (sem login), de propósito.
 - tabela `event_members` (`event_id`, `user_id`, `created_at`) — relação N:N de "eventos salvos por alguém que não é o dono" (botão "💾 Salvar nos meus eventos"). Todo autenticado só lê/insere/apaga a própria linha (`user_id = auth.uid()`); sem policy pra `anon`.
 - Auth: magic link por email (Supabase Auth), sem senha, sem provider externo.

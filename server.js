@@ -259,9 +259,29 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'Não consegui salvar as alterações. Tente de novo.' });
   }
   if (!data) {
-    return res.status(404).json({ error: 'Evento não encontrado ou você não é o dono dele.' });
+    return res.status(404).json({ error: 'Evento não encontrado ou você não tem permissão pra editar.' });
   }
   res.json({ id: data.id });
+});
+
+app.patch('/api/events/:id/permissions', requireAuth, async (req, res) => {
+  const db = scopedClient(req.token);
+  const allow = !!req.body.allow_member_edit;
+  const { data, error } = await db
+    .from('events')
+    .update({ allow_member_edit: allow })
+    .eq('id', req.params.id)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao atualizar permissão:', error);
+    return res.status(500).json({ error: 'Não consegui atualizar a permissão.' });
+  }
+  if (!data) {
+    return res.status(404).json({ error: 'Evento não encontrado ou você não é o dono dele.' });
+  }
+  res.json({ allow_member_edit: allow });
 });
 
 app.get('/api/events', requireAuth, async (req, res) => {
@@ -271,7 +291,7 @@ app.get('/api/events', requireAuth, async (req, res) => {
 
   const db = scopedClient(req.token);
   const [{ data: owned, error: ownedError }, { data: memberships, error: memberError }] = await Promise.all([
-    db.from('events').select('id, data, created_at').eq('owner_id', req.user.id),
+    db.from('events').select('id, data, created_at, allow_member_edit').eq('owner_id', req.user.id),
     db.from('event_members').select('event_id').eq('user_id', req.user.id)
   ]);
 
@@ -283,7 +303,7 @@ app.get('/api/events', requireAuth, async (req, res) => {
   const memberIds = (memberships || []).map((m) => m.event_id).filter((id) => !owned.some((o) => o.id === id));
   let memberEvents = [];
   if (memberIds.length) {
-    const { data, error } = await db.from('events').select('id, data, created_at').in('id', memberIds);
+    const { data, error } = await db.from('events').select('id, data, created_at, allow_member_edit').in('id', memberIds);
     if (error) {
       console.error('Erro ao listar eventos salvos:', error);
       return res.status(500).json({ error: 'Não consegui carregar seu histórico.' });
@@ -302,7 +322,8 @@ app.get('/api/events', requireAuth, async (req, res) => {
       event_title: row.data?.event_title || 'Evento sem nome',
       scene_count: Array.isArray(row.data?.scenes) ? row.data.scenes.length : 0,
       created_at: row.created_at,
-      is_owner: row.is_owner
+      is_owner: row.is_owner,
+      is_editor: !row.is_owner && !!row.allow_member_edit
     }))
   });
 });
@@ -353,14 +374,14 @@ app.get('/api/events/:id', async (req, res) => {
 
   const id = req.params.id;
   const [{ data: row, error }, { data: progressRows }] = await Promise.all([
-    supabase.from('events').select('data, owner_id').eq('id', id).maybeSingle(),
+    supabase.from('events').select('data, owner_id, allow_member_edit').eq('id', id).maybeSingle(),
     supabase.from('event_progress').select('action, payload').eq('event_id', id).order('created_at', { ascending: true })
   ]);
 
   if (error || !row) {
     return res.status(404).json({ error: 'Evento não encontrado. O link pode estar errado ou o evento foi removido.' });
   }
-  res.json({ ...row.data, owner_id: row.owner_id, progress: foldProgress(progressRows || []) });
+  res.json({ ...row.data, owner_id: row.owner_id, allow_member_edit: !!row.allow_member_edit, progress: foldProgress(progressRows || []) });
 });
 
 // ---------- progresso em tempo real (SSE) ----------

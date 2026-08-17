@@ -40,6 +40,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const historyNewBtn = document.getElementById('historyNewBtn');
   const editEventLink = document.getElementById('editEventLink');
   const saveEventBtn = document.getElementById('saveEventBtn');
+  const allowMemberEditBtn = document.getElementById('allowMemberEditBtn');
   const reportView = document.getElementById('reportView');
   const reportContent = document.getElementById('reportContent');
   const previewEventDate = document.getElementById('previewEventDate');
@@ -66,6 +67,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let currentEventEndDate = '';
   let currentEventLocation = '';
   let currentOwnerId = null;
+  let currentAllowMemberEdit = false;
   let editingEventId = null;
   let eventSaved = false;
   let progressStream = null;
@@ -379,7 +381,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         throw new Error(result.error || 'Erro ao salvar o evento.');
       }
       const id = wasEditing || result.id;
-      currentOwnerId = currentUser.id;
+      if(!wasEditing) currentOwnerId = currentUser.id;
       editingEventId = null;
       loadChecklist(draft);
       history.pushState({}, '', '/e/' + id);
@@ -490,6 +492,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     hideEventLink();
     disconnectProgressStream();
     currentOwnerId = null;
+    currentAllowMemberEdit = false;
     editingEventId = null;
     updateEditLinkVisibility();
     history.pushState({}, '', '/');
@@ -524,6 +527,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     connectProgressStream(id);
     updateEditLinkVisibility();
     refreshSaveButton();
+    refreshAllowMemberEditButton();
 
     const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventEndDate, currentEventLocation, link);
     if(calUrl){
@@ -534,8 +538,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
+  function isOwner(){
+    return !!(currentUser && currentOwnerId && currentUser.id === currentOwnerId);
+  }
+
   function updateEditLinkVisibility(){
-    if(currentEventId && currentUser && currentOwnerId && currentUser.id === currentOwnerId){
+    if(currentEventId && currentUser && (isOwner() || (eventSaved && currentAllowMemberEdit))){
       editEventLink.href = '/e/' + currentEventId + '/editar';
       editEventLink.hidden = false;
     } else {
@@ -546,10 +554,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function setSaveButtonState(saved){
     eventSaved = saved;
     saveEventBtn.textContent = saved ? '✓ Salvo (clique pra remover)' : '💾 Salvar nos meus eventos';
+    updateEditLinkVisibility();
   }
 
   async function refreshSaveButton(){
-    const eligible = currentEventId && currentUser && !(currentOwnerId && currentUser.id === currentOwnerId);
+    const eligible = currentEventId && currentUser && !isOwner();
     if(!eligible){
       saveEventBtn.hidden = true;
       return;
@@ -584,10 +593,41 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   });
 
+  function setAllowMemberEditState(allow){
+    currentAllowMemberEdit = allow;
+    allowMemberEditBtn.textContent = allow ? '🔓 Quem salvou também edita' : '🔒 Só você edita';
+  }
+
+  function refreshAllowMemberEditButton(){
+    allowMemberEditBtn.hidden = !(currentEventId && isOwner());
+    if(!allowMemberEditBtn.hidden) setAllowMemberEditState(currentAllowMemberEdit);
+  }
+
+  allowMemberEditBtn.addEventListener('click', async function(){
+    allowMemberEditBtn.disabled = true;
+    try {
+      const token = await accessToken();
+      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+      const resp = await fetch('/api/events/' + currentEventId + '/permissions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ allow_member_edit: !currentAllowMemberEdit })
+      });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error || 'Erro ao atualizar.');
+      setAllowMemberEditState(result.allow_member_edit);
+    } catch(err){
+      alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
+    } finally {
+      allowMemberEditBtn.disabled = false;
+    }
+  });
+
   function hideEventLink(){
     document.getElementById('eventLinkRow').hidden = true;
     calendarLinkBtn.hidden = true;
     saveEventBtn.hidden = true;
+    allowMemberEditBtn.hidden = true;
     eventSaved = false;
     currentEventDate = '';
     currentEventEndDate = '';
@@ -676,6 +716,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         throw new Error(data.error || 'Evento não encontrado.');
       }
       currentOwnerId = data.owner_id || null;
+      currentAllowMemberEdit = !!data.allow_member_edit;
       loadChecklist(data);
       showEventLink(id);
     } catch(err){
@@ -695,6 +736,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       }
       draft = normalizeDraft(data);
       editingEventId = id;
+      currentOwnerId = data.owner_id || null;
+      currentAllowMemberEdit = !!data.allow_member_edit;
       renderPreviewAll();
       showView('preview');
       publishBtn.textContent = 'Salvar alterações';
@@ -736,8 +779,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     historyList.innerHTML = events.map(function(ev){
       const date = new Date(ev.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
       let meta = ev.scene_count ? (ev.scene_count + ' cenas · publicado em ' + date) : ('Rascunho, sem roteiro ainda · reservado em ' + date);
-      if(!ev.is_owner) meta += ' · salvo, não é seu';
-      const editLink = ev.is_owner ? '<a class="btn btn-primary" href="/e/'+encodeURIComponent(ev.id)+'/editar">Editar</a>' : '';
+      if(!ev.is_owner) meta += ev.is_editor ? ' · salvo · pode editar' : ' · salvo, não é seu';
+      const editLink = (ev.is_owner || ev.is_editor) ? '<a class="btn btn-primary" href="/e/'+encodeURIComponent(ev.id)+'/editar">Editar</a>' : '';
       return (
         '<div class="history-card'+(ev.is_owner ? '' : ' history-card--saved')+'">'+
           '<div>'+
@@ -1077,6 +1120,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(currentUser) authStripEmail.textContent = currentUser.email || '';
     updateEditLinkVisibility();
     refreshSaveButton();
+    refreshAllowMemberEditButton();
   }
 
   async function accessToken(){
