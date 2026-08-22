@@ -48,17 +48,44 @@
 
 <!-- ---------- IMPORT VIEW ---------- -->
 <div class="import-view" id="importView" hidden>
-  <div class="import-card">
-    <span class="import-eyebrow">Captura · novo evento</span>
-    <h1 class="import-title">Cole o roteiro do evento</h1>
-    <p class="import-sub">Escreva do jeito que quiser — com títulos, bullets, ou só corrido — em qualquer editor, e cole o texto aqui. A IA organiza em fases e cenas prontas pra checklist ao vivo em campo.</p>
-    <textarea class="import-textarea" id="roteiroInput" placeholder="Cole aqui o roteiro do evento..."></textarea>
-    <div class="import-actions">
-      <button class="btn btn-primary" id="generateBtn" type="button">Gerar checklist</button>
-      <button class="btn" id="exampleBtn" type="button">Usar roteiro de exemplo</button>
-      <button class="btn" id="quickCreateBtn" type="button">Criar evento sem roteiro (reservar a data)</button>
+  <div class="import-wrap">
+    <div class="hero-intro" id="heroIntro">
+      <button class="hero-dismiss" id="heroDismissBtn" type="button" title="Esconder apresentação">✕</button>
+      <div class="hero-brand">
+        <svg class="hero-mark" viewBox="0 0 44 44" fill="none">
+          <g fill="#ffd400" opacity="0.92">
+            <polygon points="22,22 22,4 30,9" transform="rotate(0 22 22)"/>
+            <polygon points="22,22 22,4 30,9" transform="rotate(60 22 22)"/>
+            <polygon points="22,22 22,4 30,9" transform="rotate(120 22 22)"/>
+            <polygon points="22,22 22,4 30,9" transform="rotate(180 22 22)"/>
+            <polygon points="22,22 22,4 30,9" transform="rotate(240 22 22)"/>
+            <polygon points="22,22 22,4 30,9" transform="rotate(300 22 22)"/>
+          </g>
+          <circle cx="22" cy="22" r="6.5" fill="#0a0a0b"/>
+          <circle cx="22" cy="22" r="6.5" fill="none" stroke="#ff3b4e" stroke-width="1.5"/>
+        </svg>
+        <span class="hero-brand-name">CAPTURA</span>
+      </div>
+      <h1 class="hero-title">Do roteiro bagunçado à checklist de campo, em segundos</h1>
+      <p class="hero-sub">Feito pra equipes de cobertura de casamento e eventos: cole o roteiro que você já escreveu do seu jeito, a IA organiza em fases e cenas, e a equipe inteira acompanha ao vivo — quem já gravou o quê, sem se perder em campo.</p>
+      <div class="hero-steps">
+        <div class="hero-step"><span class="hero-step-num">1</span><div><strong>Cole o roteiro</strong>do jeito que você já escreve, sem formato fixo</div></div>
+        <div class="hero-step"><span class="hero-step-num">2</span><div><strong>A IA organiza</strong>fases, cenas, o que capturar, fala sugerida</div></div>
+        <div class="hero-step"><span class="hero-step-num">3</span><div><strong>Equipe acompanha ao vivo</strong>link compartilhável, progresso sincronizado</div></div>
+      </div>
     </div>
-    <div class="import-error" id="importError" hidden></div>
+    <div class="import-card">
+      <span class="import-eyebrow">Captura · novo evento</span>
+      <h2 class="import-title">Cole o roteiro do evento</h2>
+      <p class="import-sub">Escreva do jeito que quiser — com títulos, bullets, ou só corrido — em qualquer editor, e cole o texto aqui. A IA organiza em fases e cenas prontas pra checklist ao vivo em campo.</p>
+      <textarea class="import-textarea" id="roteiroInput" placeholder="Cole aqui o roteiro do evento..."></textarea>
+      <div class="import-actions">
+        <button class="btn btn-primary" id="generateBtn" type="button">Gerar checklist</button>
+        <button class="btn" id="exampleBtn" type="button">Usar roteiro de exemplo</button>
+        <button class="btn" id="quickCreateBtn" type="button">Criar evento sem roteiro (reservar a data)</button>
+      </div>
+      <div class="import-error" id="importError" hidden></div>
+    </div>
   </div>
 </div>
 

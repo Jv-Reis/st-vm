@@ -24,6 +24,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const exampleBtn = document.getElementById('exampleBtn');
   const quickCreateBtn = document.getElementById('quickCreateBtn');
   const importError = document.getElementById('importError');
+  const heroIntro = document.getElementById('heroIntro');
+  const heroDismissBtn = document.getElementById('heroDismissBtn');
   const previewPhasesContainer = document.getElementById('previewPhasesContainer');
   const previewMissionsContainer = document.getElementById('previewMissionsContainer');
   const loginEmailInput = document.getElementById('loginEmailInput');
@@ -76,6 +78,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let sb = null;
   let currentUser = null;
   const PENDING_DRAFT_KEY = 'captura_pending_draft';
+  const HERO_DISMISSED_KEY = 'captura_hero_dismissed';
 
   // ---------- helpers ----------
 
@@ -97,6 +100,13 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   // ---------- import ----------
+
+  if(localStorage.getItem(HERO_DISMISSED_KEY)) heroIntro.hidden = true;
+
+  heroDismissBtn.addEventListener('click', function(){
+    heroIntro.hidden = true;
+    localStorage.setItem(HERO_DISMISSED_KEY, '1');
+  });
 
   exampleBtn.addEventListener('click', function(){
     roteiroInput.value = EXAMPLE_ROTEIRO;
