@@ -36,7 +36,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 7. Qualquer pessoa que abrir o link do evento carrega o mesmo roteiro direto na checklist (sem precisar colar/gerar de novo).
 8. "← Novo roteiro" volta pra tela de importação sem perder o texto colado atual.
 9. **"📄 Relatório"** no topo da checklist gera um resumo (cenas capturadas, horários, missões flagradas) pra imprimir ou salvar como PDF — funciona a qualquer momento, evento completo ou não.
-10. **"📅 Google Calendar"** aparece ao lado do link do evento se a data foi preenchida — abre o Google Calendar já preenchido (título, data, local, link de volta pro checklist na descrição). Cada pessoa que clicar salva uma cópia na própria agenda; não exige login com Google. Além disso, o dono do evento pode **"🔗 Conectar Google Calendar"** (no topo da checklist) — depois de conectado uma vez, o próprio evento é criado/atualizado automaticamente na agenda do dono a cada publicação/edição (edita o mesmo evento, não duplica). Veja a seção própria mais abaixo.
+10. **"📅 Google Calendar"** aparece ao lado do link do evento se a data foi preenchida — abre o Google Calendar já preenchido (título, data, local, link de volta pro checklist na descrição). Cada pessoa que clicar salva uma cópia na própria agenda; não exige login com Google. Além disso, em **"Meus eventos"** você pode **"🔗 Conectar Google Calendar"** (uma vez, é uma configuração da conta) — depois de conectado, todo evento seu com data é criado/atualizado automaticamente na sua agenda a cada publicação/edição (edita o mesmo evento, não duplica). Veja a seção própria mais abaixo.
 
 ## Login, histórico e edição
 
@@ -141,7 +141,7 @@ OAUTH_STATE_SECRET=...
 - `TOKEN_ENCRYPTION_KEY` / `OAUTH_STATE_SECRET`: gere cada uma rodando `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — são duas chaves aleatórias separadas, sem relação com nenhuma outra credencial do projeto. **Guarde a `TOKEN_ENCRYPTION_KEY` com cuidado**: se ela for perdida ou trocada, todas as contas Google conectadas precisam se reconectar (os tokens salvos ficam ilegíveis sem ela).
 
 **3. Usar**
-Com as variáveis configuradas (local no `.env`, produção nas env vars do Render), o botão "🔗 Conectar Google Calendar" aparece pro dono na checklist ao vivo. Depois de conectar uma vez, publicar/editar aquele evento passa a criar/atualizar automaticamente um evento na agenda do dono — a mesma edição de antes (que só duplicava) agora atualiza o evento certo.
+Com as variáveis configuradas (local no `.env`, produção nas env vars do Render), o botão "🔗 Conectar Google Calendar" aparece em **"Meus eventos"** (é uma configuração da conta, não de um evento específico — conecta uma vez só). Depois de conectado, publicar/editar qualquer evento seu com data passa a criar/atualizar automaticamente na sua agenda — a mesma edição de antes (que só duplicava) agora atualiza o evento certo.
 
 ## PWA (instalar como app)
 

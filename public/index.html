@@ -168,7 +168,10 @@
         <span class="preview-eyebrow">Captura · meus eventos</span>
         <div class="preview-heading">Histórico de roteiros publicados</div>
       </div>
-      <button class="btn btn-primary" id="historyNewBtn" type="button">+ Novo roteiro</button>
+      <div style="display:flex; gap:10px;">
+        <button class="btn" id="googleCalendarConnectBtn" type="button" hidden>🔗 Conectar Google Calendar</button>
+        <button class="btn btn-primary" id="historyNewBtn" type="button">+ Novo roteiro</button>
+      </div>
     </div>
   </div>
   <div class="preview-view">
@@ -226,7 +229,6 @@
           <a class="reset-btn" id="editEventLink" href="#" hidden>✎ Editar evento</a>
           <button class="reset-btn" id="saveEventBtn" type="button" hidden>💾 Salvar nos meus eventos</button>
           <button class="reset-btn" id="allowMemberEditBtn" type="button" hidden>🔒 Só você edita</button>
-          <button class="reset-btn" id="googleCalendarConnectBtn" type="button" hidden>🔗 Conectar Google Calendar</button>
           <button class="reset-btn" id="exportReportBtn" type="button">📄 Relatório</button>
           <button class="reset-btn" id="newRoteiroBtn" type="button">← Novo roteiro</button>
           <button class="reset-btn" id="resetBtn" type="button">↺ Reiniciar checklist</button>

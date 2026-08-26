@@ -552,7 +552,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     updateEditLinkVisibility();
     refreshSaveButton();
     refreshAllowMemberEditButton();
-    refreshGoogleCalendarButton();
 
     const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventEndDate, currentEventLocation, link);
     if(calUrl){
@@ -651,7 +650,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let googleCalendarConnected = false;
 
   async function refreshGoogleCalendarButton(){
-    if(!(currentEventId && isOwner())){
+    if(!currentUser){
       googleCalendarConnectBtn.hidden = true;
       return;
     }
@@ -683,9 +682,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         googleCalendarConnected = false;
         googleCalendarConnectBtn.textContent = '🔗 Conectar Google Calendar';
       } else {
-        const resp = await fetch('/api/google/connect?returnTo=' + encodeURIComponent('/e/' + currentEventId), {
-          headers: { Authorization: 'Bearer ' + token }
-        });
+        const resp = await fetch('/api/google/connect', { headers: { Authorization: 'Bearer ' + token } });
         const result = await resp.json();
         if(!resp.ok) throw new Error(result.error || 'Erro ao conectar.');
         window.location.href = result.url;
@@ -702,7 +699,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     calendarLinkBtn.hidden = true;
     saveEventBtn.hidden = true;
     allowMemberEditBtn.hidden = true;
-    googleCalendarConnectBtn.hidden = true;
     eventSaved = false;
     currentEventDate = '';
     currentEventEndDate = '';
@@ -795,10 +791,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       currentAllowMemberEdit = !!data.allow_member_edit;
       loadChecklist(data);
       showEventLink(id);
-      if(new URLSearchParams(window.location.search).get('google') === 'conectado'){
-        history.replaceState({}, '', '/e/' + id);
-        alert('Google Calendar conectado! A partir de agora este evento sincroniza automaticamente.');
-      }
     } catch(err){
       importError.textContent = err.message || 'Não consegui carregar esse evento.';
       importError.hidden = false;
@@ -838,6 +830,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
     historyList.innerHTML = '<div class="history-empty">Carregando…</div>';
     showView('history');
+    refreshGoogleCalendarButton();
+    if(new URLSearchParams(window.location.search).get('google') === 'conectado'){
+      history.replaceState({}, '', '/historico');
+      alert('Google Calendar conectado! A partir de agora, seus eventos com data sincronizam automaticamente.');
+    }
     try {
       const token = await accessToken();
       const resp = await fetch('/api/events', { headers: { Authorization: 'Bearer ' + token } });
