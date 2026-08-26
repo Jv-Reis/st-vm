@@ -321,6 +321,7 @@ app.get('/api/events', requireAuth, async (req, res) => {
       id: row.id,
       event_title: row.data?.event_title || 'Evento sem nome',
       scene_count: Array.isArray(row.data?.scenes) ? row.data.scenes.length : 0,
+      event_date: row.data?.event_date || '',
       created_at: row.created_at,
       is_owner: row.is_owner,
       is_editor: !row.is_owner && !!row.allow_member_edit
@@ -386,14 +387,19 @@ app.get('/api/events/:id', async (req, res) => {
 
 // ---------- progresso em tempo real (SSE) ----------
 
-const PROGRESS_ACTIONS = new Set(['record', 'unrecord', 'mission', 'unmission', 'reset']);
+const PROGRESS_ACTIONS = new Set(['status', 'record', 'unrecord', 'mission', 'unmission', 'reset']);
 const progressSubscribers = new Map(); // eventId -> Set<res>
 
 function foldProgress(rows) {
   const recorded = {};
   const missionsDone = {};
   for (const { action, payload } of rows) {
-    if (action === 'record') recorded[payload.sceneId] = payload.time;
+    if (action === 'status') {
+      if (payload.status === 'nao_iniciado') delete recorded[payload.sceneId];
+      else recorded[payload.sceneId] = { status: payload.status, andamentoAt: payload.andamentoAt || null, feitoAt: payload.feitoAt || null };
+    }
+    // ações legadas, de progresso gravado antes do status em 3 níveis existir
+    else if (action === 'record') recorded[payload.sceneId] = { status: 'feito', andamentoAt: null, feitoAt: payload.time };
     else if (action === 'unrecord') delete recorded[payload.sceneId];
     else if (action === 'mission') missionsDone[payload.cat + '-' + payload.idx] = true;
     else if (action === 'unmission') delete missionsDone[payload.cat + '-' + payload.idx];

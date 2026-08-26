@@ -40,6 +40,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const authStripLogoutBtn = document.getElementById('authStripLogoutBtn');
   const historyList = document.getElementById('historyList');
   const historyNewBtn = document.getElementById('historyNewBtn');
+  const historyViewSwitch = document.getElementById('historyViewSwitch');
   const editEventLink = document.getElementById('editEventLink');
   const saveEventBtn = document.getElementById('saveEventBtn');
   const allowMemberEditBtn = document.getElementById('allowMemberEditBtn');
@@ -55,6 +56,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function showView(name){
     Object.keys(VIEWS).forEach(key => { VIEWS[key].hidden = key !== name; });
     authStrip.hidden = (name === 'report' || name === 'loading');
+    authStrip.classList.toggle('auth-strip--static', name === 'app');
     window.scrollTo(0, 0);
   }
 
@@ -79,6 +81,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let currentUser = null;
   const PENDING_DRAFT_KEY = 'captura_pending_draft';
   const HERO_DISMISSED_KEY = 'captura_hero_dismissed';
+  const HISTORY_VIEW_KEY = 'captura_history_view';
+  let historyViewMode = localStorage.getItem(HISTORY_VIEW_KEY) || 'list';
+  let historyEvents = [];
+  let calMonthCursor = null;
 
   // ---------- helpers ----------
 
@@ -443,9 +449,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         (captureItems ? '<ul class="capture-list">'+captureItems+'</ul>' : '')+
         speechHTML+
         (rulesHTML ? '<div class="rules-grid">'+rulesHTML+'</div>' : '')+
-        '<button class="record-btn" type="button" data-action="toggle" data-id="'+item.id+'">'+
-          '<span class="rec-icon"></span><span class="btn-label">Gravar</span>'+
-        '</button>'+
+        '<div class="status-btn-group" data-id="'+item.id+'">'+
+          '<button class="status-btn" type="button" data-status="nao_iniciado" data-id="'+item.id+'">Não iniciado</button>'+
+          '<button class="status-btn" type="button" data-status="andamento" data-id="'+item.id+'">Em andamento</button>'+
+          '<button class="status-btn" type="button" data-status="feito" data-id="'+item.id+'">Feito</button>'+
+        '</div>'+
+        '<div class="status-times" id="times-'+item.id+'"></div>'+
       '</article>'
     );
   }
@@ -486,7 +495,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     renderMissions();
 
     if(data.progress){
-      Object.entries(data.progress.recorded || {}).forEach(([sceneId, time]) => applyRecord(sceneId, time));
+      Object.entries(data.progress.recorded || {}).forEach(([sceneId, entry]) => applyStatus(sceneId, entry));
       Object.entries(data.progress.missionsDone || {}).forEach(([key, done]) => { if(done) applyMissionKey(key, true); });
     }
 
@@ -681,8 +690,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function handleRemoteProgress(msg){
     const action = msg.action;
     const payload = msg.payload || {};
-    if(action === 'record') applyRecord(payload.sceneId, payload.time);
-    else if(action === 'unrecord') applyRecord(payload.sceneId, null);
+    if(action === 'status') applyStatus(payload.sceneId, { status: payload.status, andamentoAt: payload.andamentoAt, feitoAt: payload.feitoAt });
+    else if(action === 'record') applyStatus(payload.sceneId, { status: 'feito', feitoAt: payload.time });
+    else if(action === 'unrecord') applyStatus(payload.sceneId, null);
     else if(action === 'mission') applyMissionKey(payload.cat + '-' + payload.idx, true);
     else if(action === 'unmission') applyMissionKey(payload.cat + '-' + payload.idx, false);
     else if(action === 'reset') resetAllProgress();
@@ -692,7 +702,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     fetch('/api/events/' + id).then(function(r){ return r.json(); }).then(function(data){
       if(!data || !data.progress) return;
       resetAllProgress();
-      Object.entries(data.progress.recorded || {}).forEach(([sceneId, time]) => applyRecord(sceneId, time));
+      Object.entries(data.progress.recorded || {}).forEach(([sceneId, entry]) => applyStatus(sceneId, entry));
       Object.entries(data.progress.missionsDone || {}).forEach(([key, done]) => { if(done) applyMissionKey(key, true); });
     }).catch(function(){});
   }
@@ -775,35 +785,126 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       if(!resp.ok){
         throw new Error(result.error || 'Erro ao carregar histórico.');
       }
-      renderHistoryList(result.events || []);
+      historyEvents = result.events || [];
+      const withDate = historyEvents.filter(ev => ev.event_date);
+      calMonthCursor = withDate.length
+        ? new Date(withDate.slice().sort((a,b) => new Date(b.event_date) - new Date(a.event_date))[0].event_date)
+        : new Date();
+      updateHistoryViewSwitch();
+      renderHistoryList();
     } catch(err){
       historyList.innerHTML = '<div class="history-empty">Não consegui carregar seu histórico (' + escapeHTML(err.message || 'erro') + ').</div>';
     }
   }
 
-  function renderHistoryList(events){
-    if(!events.length){
+  function updateHistoryViewSwitch(){
+    historyViewSwitch.querySelectorAll('.view-switch-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === historyViewMode);
+    });
+  }
+
+  historyViewSwitch.addEventListener('click', function(e){
+    const btn = e.target.closest('.view-switch-btn');
+    if(!btn) return;
+    historyViewMode = btn.dataset.mode;
+    localStorage.setItem(HISTORY_VIEW_KEY, historyViewMode);
+    updateHistoryViewSwitch();
+    renderHistoryList();
+  });
+
+  function historyCardHTML(ev){
+    const date = new Date(ev.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    let meta = ev.scene_count ? (ev.scene_count + ' cenas · publicado em ' + date) : ('Rascunho, sem roteiro ainda · reservado em ' + date);
+    if(!ev.is_owner) meta += ev.is_editor ? ' · salvo · pode editar' : ' · salvo, não é seu';
+    const editLink = (ev.is_owner || ev.is_editor) ? '<a class="btn btn-primary" href="/e/'+encodeURIComponent(ev.id)+'/editar">Editar</a>' : '';
+    return (
+      '<div class="history-card'+(ev.is_owner ? '' : ' history-card--saved')+'">'+
+        '<div>'+
+          '<div class="history-title">'+escapeHTML(ev.event_title)+'</div>'+
+          '<div class="history-meta">'+meta+'</div>'+
+        '</div>'+
+        '<div class="history-actions">'+
+          '<a class="btn" href="/e/'+encodeURIComponent(ev.id)+'">Ver</a>'+
+          editLink+
+        '</div>'+
+      '</div>'
+    );
+  }
+
+  function renderHistoryList(){
+    historyList.classList.remove('grid-mode');
+    if(!historyEvents.length){
       historyList.innerHTML = '<div class="history-empty">Você ainda não publicou nenhum roteiro.</div>';
       return;
     }
-    historyList.innerHTML = events.map(function(ev){
-      const date = new Date(ev.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-      let meta = ev.scene_count ? (ev.scene_count + ' cenas · publicado em ' + date) : ('Rascunho, sem roteiro ainda · reservado em ' + date);
-      if(!ev.is_owner) meta += ev.is_editor ? ' · salvo · pode editar' : ' · salvo, não é seu';
-      const editLink = (ev.is_owner || ev.is_editor) ? '<a class="btn btn-primary" href="/e/'+encodeURIComponent(ev.id)+'/editar">Editar</a>' : '';
-      return (
-        '<div class="history-card'+(ev.is_owner ? '' : ' history-card--saved')+'">'+
-          '<div>'+
-            '<div class="history-title">'+escapeHTML(ev.event_title)+'</div>'+
-            '<div class="history-meta">'+meta+'</div>'+
-          '</div>'+
-          '<div class="history-actions">'+
-            '<a class="btn" href="/e/'+encodeURIComponent(ev.id)+'">Ver</a>'+
-            editLink+
-          '</div>'+
-        '</div>'
-      );
-    }).join('');
+    if(historyViewMode === 'grid') return renderHistoryAsGrid();
+    if(historyViewMode === 'calendar') return renderHistoryAsCalendar();
+    renderHistoryAsList();
+  }
+
+  function renderHistoryAsList(){
+    historyList.innerHTML = historyEvents.map(historyCardHTML).join('');
+  }
+
+  function renderHistoryAsGrid(){
+    historyList.classList.add('grid-mode');
+    historyList.innerHTML = historyEvents.map(historyCardHTML).join('');
+  }
+
+  function renderHistoryAsCalendar(){
+    const year = calMonthCursor.getFullYear();
+    const month = calMonthCursor.getMonth();
+    const firstOfMonth = new Date(year, month, 1);
+    const startOffset = firstOfMonth.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const eventsByDay = {};
+    const noDateEvents = [];
+    historyEvents.forEach(ev => {
+      if(!ev.event_date){ noDateEvents.push(ev); return; }
+      const d = new Date(ev.event_date);
+      if(d.getFullYear() === year && d.getMonth() === month){
+        const day = d.getDate();
+        (eventsByDay[day] = eventsByDay[day] || []).push(ev);
+      }
+    });
+
+    const dayLabels = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+    let cellsHTML = dayLabels.map(l => '<div class="cal-day-label">'+l+'</div>').join('');
+    for(let i = 0; i < startOffset; i++) cellsHTML += '<div class="cal-cell empty"></div>';
+    for(let day = 1; day <= daysInMonth; day++){
+      const dayEvents = (eventsByDay[day] || []).map(ev =>
+        '<button type="button" class="cal-event" data-id="'+escapeAttr(ev.id)+'" title="'+escapeAttr(ev.event_title)+'">'+escapeHTML(ev.event_title)+'</button>'
+      ).join('');
+      cellsHTML += '<div class="cal-cell"><span class="cal-date">'+day+'</span>'+dayEvents+'</div>';
+    }
+
+    const noDateHTML = noDateEvents.length
+      ? '<div class="cal-nodata"><div class="cal-nodata-title">Sem data definida</div>'+noDateEvents.map(historyCardHTML).join('')+'</div>'
+      : '';
+
+    historyList.innerHTML =
+      '<div class="cal-nav">'+
+        '<button class="btn" type="button" id="calPrevBtn">← Mês anterior</button>'+
+        '<span class="cal-nav-label">'+firstOfMonth.toLocaleDateString('pt-BR', { month:'long', year:'numeric' })+'</span>'+
+        '<button class="btn" type="button" id="calNextBtn">Próximo mês →</button>'+
+      '</div>'+
+      '<div class="cal-grid">'+cellsHTML+'</div>'+
+      noDateHTML;
+
+    document.getElementById('calPrevBtn').addEventListener('click', function(){
+      calMonthCursor = new Date(year, month - 1, 1);
+      renderHistoryAsCalendar();
+    });
+    document.getElementById('calNextBtn').addEventListener('click', function(){
+      calMonthCursor = new Date(year, month + 1, 1);
+      renderHistoryAsCalendar();
+    });
+    historyList.querySelectorAll('.cal-event').forEach(btn => {
+      btn.addEventListener('click', function(){
+        window.location.href = '/e/' + encodeURIComponent(btn.dataset.id);
+      });
+    });
   }
 
   function render(){
@@ -864,8 +965,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }).join('');
   }
 
+  function isDone(id){
+    return !!(recorded[id] && recorded[id].status === 'feito');
+  }
+
   function updateAll(){
-    const doneCount = Object.keys(recorded).length;
+    const doneCount = CONTENT.filter(c => isDone(c.id)).length;
     const total = CONTENT.length;
     const pct = total ? Math.round((doneCount/total)*100) : 0;
 
@@ -875,7 +980,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
     PHASES.forEach(phase=>{
       const items = CONTENT.filter(c=>c.phase===phase.key);
-      const doneInPhase = items.filter(c=>recorded[c.id]).length;
+      const doneInPhase = items.filter(c=>isDone(c.id)).length;
       const countEl = document.getElementById('phasecount-'+phase.key);
       const pillCountEl = document.getElementById('pillcount-'+phase.key);
       const pillEl = document.getElementById('pill-'+phase.key);
@@ -907,22 +1012,37 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
-  function applyRecord(id, time){
+  function applyStatus(id, entry){
     const card = document.getElementById('card-'+id);
-    const btnLabel = card && card.querySelector('.btn-label');
     const stamp = document.getElementById('stamp-'+id);
+    const timesEl = document.getElementById('times-'+id);
+    const status = entry && entry.status;
 
-    if(time == null){
-      delete recorded[id];
-      if(card) card.classList.remove('is-done');
-      if(btnLabel) btnLabel.textContent = 'Gravar';
-      if(stamp) stamp.textContent = 'CAPTURADO';
+    if(status === 'andamento' || status === 'feito'){
+      recorded[id] = { status, andamentoAt: entry.andamentoAt || null, feitoAt: entry.feitoAt || null };
     } else {
-      recorded[id] = time;
-      if(card) card.classList.add('is-done');
-      if(btnLabel) btnLabel.textContent = 'Gravado · '+time;
-      if(stamp) stamp.textContent = 'CAPTURADO · '+time;
+      delete recorded[id];
     }
+
+    if(card){
+      card.classList.toggle('is-progress', status === 'andamento');
+      card.classList.toggle('is-done', status === 'feito');
+      card.querySelectorAll('.status-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.status === (status || 'nao_iniciado'));
+      });
+    }
+    if(stamp){
+      if(status === 'andamento') stamp.textContent = 'EM ANDAMENTO' + (recorded[id].andamentoAt ? ' · '+recorded[id].andamentoAt : '');
+      else if(status === 'feito') stamp.textContent = 'CAPTURADO' + (recorded[id].feitoAt ? ' · '+recorded[id].feitoAt : '');
+      else stamp.textContent = 'CAPTURADO';
+    }
+    if(timesEl){
+      const parts = [];
+      if(recorded[id] && recorded[id].andamentoAt) parts.push('Iniciado ' + recorded[id].andamentoAt);
+      if(recorded[id] && recorded[id].feitoAt) parts.push('Concluído ' + recorded[id].feitoAt);
+      timesEl.textContent = parts.join(' · ');
+    }
+
     updateAll();
   }
 
@@ -939,22 +1059,26 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   function resetAllProgress(){
-    Object.keys(recorded).forEach(id => applyRecord(id, null));
+    Object.keys(recorded).forEach(id => applyStatus(id, null));
     Object.keys(missionsDone).forEach(key => applyMissionKey(key, false));
   }
 
-  function toggleCard(id){
-    if(recorded[id]){
-      applyRecord(id, null);
-      sendProgress('unrecord', { sceneId: id });
-    } else {
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2,'0');
-      const mm = String(now.getMinutes()).padStart(2,'0');
-      const stamp_time = hh+':'+mm;
-      applyRecord(id, stamp_time);
-      sendProgress('record', { sceneId: id, time: stamp_time });
+  function setSceneStatus(id, status){
+    if(status === 'nao_iniciado'){
+      applyStatus(id, null);
+      sendProgress('status', { sceneId: id, status: 'nao_iniciado', andamentoAt: null, feitoAt: null });
+      return;
     }
+    const now = new Date();
+    const time = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    const prev = recorded[id] || {};
+    const entry = {
+      status,
+      andamentoAt: status === 'andamento' ? time : (prev.andamentoAt || null),
+      feitoAt: status === 'feito' ? time : (prev.feitoAt || null)
+    };
+    applyStatus(id, entry);
+    sendProgress('status', { sceneId: id, ...entry });
   }
 
   function toggleMission(cat, idx){
@@ -969,8 +1093,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   document.addEventListener('click', function(e){
-    const recBtn = e.target.closest('[data-action="toggle"]');
-    if(recBtn){ toggleCard(recBtn.dataset.id); return; }
+    const statusBtn = e.target.closest('.status-btn');
+    if(statusBtn){ setSceneStatus(statusBtn.dataset.id, statusBtn.dataset.status); return; }
 
     const chip = e.target.closest('.mission-chip');
     if(chip){ toggleMission(chip.dataset.cat, Number(chip.dataset.idx)); return; }
@@ -1034,30 +1158,33 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function generateReport(){
     const eventTitle = document.getElementById('eventTitle').value || 'Evento';
     const total = CONTENT.length;
-    const doneCount = Object.keys(recorded).length;
+    const doneCount = CONTENT.filter(c => isDone(c.id)).length;
     const pct = total ? Math.round((doneCount/total)*100) : 0;
     const missionTotal = MISSIONS.reduce((sum, cat) => sum + cat.items.length, 0);
     const missionDone = Object.keys(missionsDone).length;
     const generatedAt = new Date().toLocaleString('pt-BR');
 
+    const statusLabel = { andamento: 'Em andamento', feito: 'Feito' };
     const phasesHTML = PHASES.map(phase => {
       const items = CONTENT.filter(c => c.phase === phase.key);
       if(!items.length) return '';
       const rows = items.map(item => {
-        const done = !!recorded[item.id];
-        const time = recorded[item.id] || '';
+        const entry = recorded[item.id];
+        const status = entry ? statusLabel[entry.status] || '—' : 'Não iniciado';
         return (
           '<tr>'+
-            '<td class="report-status">'+(done ? '✓' : '—')+'</td>'+
+            '<td class="report-status">'+(entry && entry.status === 'feito' ? '✓' : '—')+'</td>'+
             '<td>'+escapeHTML(item.title)+'</td>'+
             '<td class="report-muted">'+escapeHTML(item.formato)+'</td>'+
-            '<td class="report-muted">'+(time ? escapeHTML(time) : '—')+'</td>'+
+            '<td class="report-muted">'+escapeHTML(status)+'</td>'+
+            '<td class="report-muted">'+(entry && entry.andamentoAt ? escapeHTML(entry.andamentoAt) : '—')+'</td>'+
+            '<td class="report-muted">'+(entry && entry.feitoAt ? escapeHTML(entry.feitoAt) : '—')+'</td>'+
           '</tr>'
         );
       }).join('');
       return (
         '<h3>'+escapeHTML(phase.label)+'</h3>'+
-        '<table class="report-table"><thead><tr><th></th><th>Cena</th><th>Formato</th><th>Capturado às</th></tr></thead><tbody>'+rows+'</tbody></table>'
+        '<table class="report-table"><thead><tr><th></th><th>Cena</th><th>Formato</th><th>Status</th><th>Iniciado</th><th>Concluído</th></tr></thead><tbody>'+rows+'</tbody></table>'
       );
     }).join('');
 

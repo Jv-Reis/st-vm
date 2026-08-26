@@ -32,7 +32,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 3. Clique em "Gerar checklist". A IA organiza o texto em fases, cenas, o que capturar, fala sugerida e regras de pode/não pode.
 4. **Revise na prévia**: ajuste título, textos, ícones e formato de qualquer campo; reordene ou remova cenas e fases (setas ↑/↓ e ✕); adicione cena/fase/categoria de missão manualmente; reatribua uma cena pra outra fase pelo seletor "Fase". Preencher **início, término e local** (todos opcionais) libera o botão de Google Calendar depois de publicar — sem o término preenchido, ou se o término for antes do início, o evento é criado com 4h de duração por padrão (um aviso aparece na prévia se o término preenchido for inválido).
 5. Clique em **"Publicar checklist"** — o evento é salvo no banco e você recebe um link (`/e/algumId`) mostrado no topo da página. Copie e mande pra equipe.
-6. Use a checklist em campo: marque "Gravar" em cada cena conforme captura, acompanhe o progresso geral e por fase, e marque as "missões" (momentos soltos sem ordem fixa) quando flagrar.
+6. Use a checklist em campo: marque cada cena como **Não iniciado / Em andamento / Feito**, acompanhe o progresso geral e por fase (só "Feito" conta pro percentual), e marque as "missões" (momentos soltos sem ordem fixa) quando flagrar. Cada mudança de status guarda o próprio horário (ex: "Iniciado 14:02 · Concluído 14:15") — útil pra cruzar com o horário dos arquivos na galeria depois. A tela rola livremente (o topo não fica fixo), pra não ocupar espaço da tela em celular.
 7. Qualquer pessoa que abrir o link do evento carrega o mesmo roteiro direto na checklist (sem precisar colar/gerar de novo).
 8. "← Novo roteiro" volta pra tela de importação sem perder o texto colado atual.
 9. **"📄 Relatório"** no topo da checklist gera um resumo (cenas capturadas, horários, missões flagradas) pra imprimir ou salvar como PDF — funciona a qualquer momento, evento completo ou não.
@@ -47,6 +47,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 - Eventos publicados antes dessa mudança continuam funcionando normalmente pra quem só usa o link (ver, marcar "Gravar"), mas não aparecem no histórico de ninguém nem podem ser editados (não têm dono).
 - **"Criar evento sem roteiro (reservar a data)"**, na tela inicial, pula direto pra prévia sem gerar nada — dá pra preencher só nome/data/local e publicar (confirma antes, já que não tem cena nenhuma). O evento fica com o link e o Google Calendar funcionando na hora; aparece no histórico como "Rascunho, sem roteiro ainda". Depois, em "Editar" → "← Colar outro roteiro", dá pra colar o texto e gerar as cenas via IA — atualiza o mesmo evento (mesmo link), não cria um novo.
 - **"💾 Salvar nos meus eventos"**, na checklist ao vivo, aparece pra quem está logado mas não é dono do evento (quem recebeu o link) — salva o evento no histórico dela também, sem virar dono nem poder editar. Clicar de novo remove. No histórico, esses eventos aparecem marcados como "salvo, não é seu" e sem o botão "Editar".
+- **"Meus eventos"** tem 3 modos de visualização (☰ Lista / ▦ Bloco / 📅 Calendário), lembrados entre visitas. No modo Calendário, cada evento aparece no dia da sua data de início; eventos sem data (rascunhos, ou criados manualmente sem data) ficam numa lista separada abaixo.
 - **"🔒 Só você edita" / "🔓 Quem salvou também edita"**, na checklist ao vivo, aparece só pro dono — é um interruptor por evento: quando ligado, qualquer pessoa que tenha salvo aquele evento pode editá-lo também (não precisa virar dono nem receber convite individual); quando desligado, volta a ser só o dono. No histórico, quem ganhou edição assim aparece como "salvo · pode editar" e já vê o botão "Editar".
 
 ## O que NÃO tem ainda
@@ -54,6 +55,8 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 - Login de terceiros (Google, etc.) — só magic link por email.
 - Id estável nos itens de missão (só nas cenas) — reordenar/editar itens de missão num evento com progresso já gravado pode desalinhar o que estava marcado. Baixo risco na prática (missões não têm reorder na prévia hoje).
 - Limpeza do log `event_progress` — cresce sem limite, ainda não é problema na escala atual de uso.
+- Geração de pastas (nome/quantidade) na criação do evento — discutido, adiado de propósito.
+- Google Calendar via API/OAuth — hoje o botão usa um link simples ("adicionar à minha agenda"), então editar a data depois **cria um evento novo** em vez de atualizar o existente. Corrigir isso de verdade exige migrar pra integração OAuth completa (login com Google, app registrado no Google Cloud) — decisão consciente de adiar, pela complexidade.
 
 ## Deploy no Render (pra o link funcionar fora da sua rede)
 
@@ -106,7 +109,7 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 
 **Projeto Supabase:** `captura-checklist` (região sa-east-1 / São Paulo).
 - tabela `events` (`id`, `data` jsonb, `owner_id` uuid, `created_at`, `allow_member_edit` boolean) — o roteiro publicado. SELECT liberado pra `anon` **e** `authenticated`; INSERT só do dono; UPDATE do dono OU (se `allow_member_edit = true`) de quem tiver linha em `event_members` pra esse evento.
-- tabela `event_progress` (`id`, `event_id`, `action`, `payload` jsonb, `created_at`) — log append-only de cada "Gravar"/missão/reset, usado pra persistir e sincronizar o progresso entre dispositivos. Continua público (sem login), de propósito.
+- tabela `event_progress` (`id`, `event_id`, `action`, `payload` jsonb, `created_at`) — log append-only de cada mudança de status de cena (`action: 'status'`, com o status e os horários de "em andamento"/"feito")/missão/reset, usado pra persistir e sincronizar o progresso entre dispositivos. Linhas antigas (`action: 'record'/'unrecord'`, de antes do status em 3 níveis) continuam sendo lidas normalmente, como "feito". Continua público (sem login), de propósito.
 - tabela `event_members` (`event_id`, `user_id`, `created_at`) — relação N:N de "eventos salvos por alguém que não é o dono" (botão "💾 Salvar nos meus eventos"). Todo autenticado só lê/insere/apaga a própria linha (`user_id = auth.uid()`); sem policy pra `anon`.
 - Auth: magic link por email (Supabase Auth), sem senha, sem provider externo.
 - **Pegadinha de RLS já corrigida:** a policy de SELECT foi criada só `to anon` no começo — funcionava pra ver a checklist (rota pública), mas quebrava silenciosamente o `PATCH /api/events/:id` pra quem estava logado, porque o `UPDATE ... RETURNING` também precisa de permissão de leitura pra devolver a linha, e usuário autenticado não tinha nenhuma policy de SELECT que valesse pra ele. A policy agora cobre `anon, authenticated`.
