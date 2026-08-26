@@ -104,6 +104,9 @@ public/index.html      import + prévia editável + login + histórico + checkli
 public/styles.css      estilos (adaptados do protótipo original)
 public/app.js          lógica: geração via IA, prévia editável (draft), auth (Supabase), roteamento por URL,
                         publicação/edição, link compartilhável, cards, sincronização de progresso via SSE, relatório
+public/manifest.json   manifesto do PWA (nome, ícones, cores) — instalabilidade
+public/sw.js           service worker: cache do app shell e do último evento aberto, pra abrir offline
+public/icons/          ícones do PWA (gerados a partir da marca já existente, sem arte nova)
 .env.example            modelo de variáveis de ambiente (GEMINI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, PORT)
 ```
 
@@ -113,6 +116,12 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 - tabela `event_members` (`event_id`, `user_id`, `created_at`) — relação N:N de "eventos salvos por alguém que não é o dono" (botão "💾 Salvar nos meus eventos"). Todo autenticado só lê/insere/apaga a própria linha (`user_id = auth.uid()`); sem policy pra `anon`.
 - Auth: magic link por email (Supabase Auth), sem senha, sem provider externo.
 - **Pegadinha de RLS já corrigida:** a policy de SELECT foi criada só `to anon` no começo — funcionava pra ver a checklist (rota pública), mas quebrava silenciosamente o `PATCH /api/events/:id` pra quem estava logado, porque o `UPDATE ... RETURNING` também precisa de permissão de leitura pra devolver a linha, e usuário autenticado não tinha nenhuma policy de SELECT que valesse pra ele. A policy agora cobre `anon, authenticated`.
+
+## PWA (instalar como app)
+
+O CAPTURA agora é instalável — no Chrome (Android/desktop) aparece a opção "Instalar app" ou "Adicionar à tela inicial"; no Safari (iOS), use o menu Compartilhar → "Adicionar à Tela de Início". Uma vez instalado, abre em tela cheia (sem barra do navegador) com ícone próprio.
+
+Também funciona parcialmente **offline**: depois de abrir um evento pelo menos uma vez com internet, o app shell (HTML/CSS/JS) e os dados daquele evento ficam salvos no cache do navegador — se a conexão cair em campo, dá pra reabrir a checklist já carregada (sem sinal, sem sincronizar progresso em tempo real, mas com o roteiro visível). Marcar/gravar status **exige conexão** — isso não fica em fila pra sincronizar depois offline; se sentir falta disso na prática, é um projeto futuro à parte (mais delicado, por causa da sincronização em tempo real entre vários dispositivos no mesmo evento).
 
 ## Próximos passos
 
