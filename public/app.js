@@ -1093,6 +1093,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   document.addEventListener('click', function(e){
+    const phasePill = e.target.closest('.phase-pill');
+    if(phasePill){
+      e.preventDefault();
+      const target = document.getElementById(phasePill.getAttribute('href').slice(1));
+      if(target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
     const statusBtn = e.target.closest('.status-btn');
     if(statusBtn){ setSceneStatus(statusBtn.dataset.id, statusBtn.dataset.status); return; }
 
