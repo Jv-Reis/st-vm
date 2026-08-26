@@ -48,6 +48,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const editEventLink = document.getElementById('editEventLink');
   const saveEventBtn = document.getElementById('saveEventBtn');
   const allowMemberEditBtn = document.getElementById('allowMemberEditBtn');
+  const googleCalendarConnectBtn = document.getElementById('googleCalendarConnectBtn');
   const reportView = document.getElementById('reportView');
   const reportContent = document.getElementById('reportContent');
   const previewEventDate = document.getElementById('previewEventDate');
@@ -551,6 +552,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     updateEditLinkVisibility();
     refreshSaveButton();
     refreshAllowMemberEditButton();
+    refreshGoogleCalendarButton();
 
     const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventEndDate, currentEventLocation, link);
     if(calUrl){
@@ -646,11 +648,61 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   });
 
+  let googleCalendarConnected = false;
+
+  async function refreshGoogleCalendarButton(){
+    if(!(currentEventId && isOwner())){
+      googleCalendarConnectBtn.hidden = true;
+      return;
+    }
+    try {
+      const token = await accessToken();
+      if(!token){ googleCalendarConnectBtn.hidden = true; return; }
+      const resp = await fetch('/api/google/status', { headers: { Authorization: 'Bearer ' + token } });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error();
+      googleCalendarConnected = !!result.connected;
+      googleCalendarConnectBtn.hidden = false;
+      googleCalendarConnectBtn.textContent = googleCalendarConnected
+        ? '📅 Google Calendar conectado (desconectar)'
+        : '🔗 Conectar Google Calendar';
+    } catch(err){
+      googleCalendarConnectBtn.hidden = true;
+    }
+  }
+
+  googleCalendarConnectBtn.addEventListener('click', async function(){
+    googleCalendarConnectBtn.disabled = true;
+    try {
+      const token = await accessToken();
+      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+      if(googleCalendarConnected){
+        if(!confirm('Desconectar sua conta do Google Calendar? Os eventos já criados na sua agenda continuam lá, mas deixam de ser atualizados automaticamente.')) return;
+        const resp = await fetch('/api/google/disconnect', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+        if(!resp.ok) throw new Error('Erro ao desconectar.');
+        googleCalendarConnected = false;
+        googleCalendarConnectBtn.textContent = '🔗 Conectar Google Calendar';
+      } else {
+        const resp = await fetch('/api/google/connect?returnTo=' + encodeURIComponent('/e/' + currentEventId), {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        const result = await resp.json();
+        if(!resp.ok) throw new Error(result.error || 'Erro ao conectar.');
+        window.location.href = result.url;
+      }
+    } catch(err){
+      alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
+    } finally {
+      googleCalendarConnectBtn.disabled = false;
+    }
+  });
+
   function hideEventLink(){
     document.getElementById('eventLinkRow').hidden = true;
     calendarLinkBtn.hidden = true;
     saveEventBtn.hidden = true;
     allowMemberEditBtn.hidden = true;
+    googleCalendarConnectBtn.hidden = true;
     eventSaved = false;
     currentEventDate = '';
     currentEventEndDate = '';
@@ -743,6 +795,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       currentAllowMemberEdit = !!data.allow_member_edit;
       loadChecklist(data);
       showEventLink(id);
+      if(new URLSearchParams(window.location.search).get('google') === 'conectado'){
+        history.replaceState({}, '', '/e/' + id);
+        alert('Google Calendar conectado! A partir de agora este evento sincroniza automaticamente.');
+      }
     } catch(err){
       importError.textContent = err.message || 'Não consegui carregar esse evento.';
       importError.hidden = false;
@@ -1270,6 +1326,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     updateEditLinkVisibility();
     refreshSaveButton();
     refreshAllowMemberEditButton();
+    refreshGoogleCalendarButton();
   }
 
   async function accessToken(){

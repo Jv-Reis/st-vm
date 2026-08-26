@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
+import { OAuth2Client } from 'google-auth-library';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -34,6 +35,17 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY)
   : null;
 
+// Cliente com a service role — ignora RLS. Usado SÓ pra duas operações internas
+// que não podem passar pelo JWT de um usuário comum: gravar a conta Google
+// conectada no callback do OAuth (não tem sessão de usuário nesse request, é
+// um redirect vindo direto do Google) e ler o token da conta do DONO do
+// evento durante a sincronização, mesmo quando quem salvou foi um editor
+// autorizado (não o dono). Nunca exposto ao cliente (diferente da anon key,
+// que já é enviada via /api/config).
+const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : null;
+
 function getBearerToken(req) {
   const h = req.headers.authorization || '';
   return h.startsWith('Bearer ') ? h.slice(7) : null;
@@ -58,6 +70,60 @@ function scopedClient(token) {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } }
   });
+}
+
+// ---------- criptografia dos tokens do Google (AES-256-GCM) ----------
+// Tokens de refresh do Google não expiram sozinhos: se vazassem em texto
+// puro num dump do banco, dariam controle contínuo da agenda de alguém.
+// A chave só existe aqui no servidor (env var), nunca no banco.
+
+const ENC_ALGO = 'aes-256-gcm';
+
+function getEncKey() {
+  const raw = Buffer.from(process.env.TOKEN_ENCRYPTION_KEY || '', 'base64');
+  if (raw.length !== 32) throw new Error('TOKEN_ENCRYPTION_KEY ausente ou inválida (precisa de 32 bytes em base64).');
+  return raw;
+}
+
+function encryptToken(plaintext) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ENC_ALGO, getEncKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return [iv.toString('base64'), authTag.toString('base64'), ciphertext.toString('base64')].join(':');
+}
+
+function decryptToken(stored) {
+  const [ivB64, tagB64, dataB64] = String(stored || '').split(':');
+  const decipher = crypto.createDecipheriv(ENC_ALGO, getEncKey(), Buffer.from(ivB64, 'base64'));
+  decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
+  return Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64')), decipher.final()]).toString('utf8');
+}
+
+// ---------- state assinado do fluxo OAuth (anti-CSRF) ----------
+// Sem isso, alguém poderia forçar a vítima a conectar a conta do ATACANTE
+// na conta da vítima no CAPTURA (ataque conhecido de OAuth sem state validado).
+
+function signState(payload) {
+  const json = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', process.env.OAUTH_STATE_SECRET || '').update(json).digest('base64url');
+  return `${json}.${sig}`;
+}
+
+function verifyState(state) {
+  const [json, sig] = String(state || '').split('.');
+  if (!json || !sig) return null;
+  const expected = crypto.createHmac('sha256', process.env.OAUTH_STATE_SECRET || '').update(json).digest('base64url');
+  const sigBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expected);
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(json, 'base64url').toString());
+    if (!payload.exp || Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 app.get('/api/config', (req, res) => {
@@ -210,6 +276,151 @@ app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
   }
 });
 
+// ---------- Google Calendar (OAuth) ----------
+
+const GOOGLE_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+
+function buildGoogleRedirectUri(req) {
+  return `${req.protocol}://${req.get('host')}/api/google/oauth/callback`;
+}
+
+function googleOAuthClient(req) {
+  return new OAuth2Client(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, req ? buildGoogleRedirectUri(req) : undefined);
+}
+
+app.get('/api/google/connect', requireAuth, (req, res) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !supabaseAdmin) {
+    return res.status(500).json({ error: 'Integração com Google Calendar não configurada no servidor.' });
+  }
+  const returnTo = /^\/e\/[a-zA-Z0-9-]+$/.test(req.query.returnTo || '') ? req.query.returnTo : '/historico';
+  const state = signState({ uid: req.user.id, returnTo, exp: Date.now() + 10 * 60 * 1000 });
+  const url = googleOAuthClient(req).generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: [GOOGLE_CALENDAR_SCOPE],
+    state
+  });
+  res.json({ url });
+});
+
+app.get('/api/google/oauth/callback', async (req, res) => {
+  const payload = verifyState(req.query.state);
+  if (!payload) {
+    return res.status(400).send('Link de conexão inválido ou expirado. Feche esta aba e tente conectar de novo.');
+  }
+  if (!supabaseAdmin) {
+    return res.status(500).send('Integração com Google Calendar não configurada no servidor.');
+  }
+  try {
+    const oauth2Client = googleOAuthClient(req);
+    const { tokens } = await oauth2Client.getToken(req.query.code);
+    if (!tokens.refresh_token) {
+      return res.status(400).send('O Google não devolveu permissão de acesso contínuo. Desconecte o CAPTURA em myaccount.google.com/permissions e tente conectar de novo.');
+    }
+    oauth2Client.setCredentials(tokens);
+    const info = await oauth2Client.getTokenInfo(tokens.access_token).catch(() => null);
+
+    const { error } = await supabaseAdmin.from('google_calendar_accounts').upsert({
+      user_id: payload.uid,
+      google_email: info?.email || null,
+      refresh_token_enc: encryptToken(tokens.refresh_token),
+      access_token_enc: tokens.access_token ? encryptToken(tokens.access_token) : null,
+      access_token_expires_at: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null
+    });
+    if (error) {
+      console.error('Erro ao salvar conta Google:', error);
+      return res.status(500).send('Erro ao salvar a conexão com o Google Calendar.');
+    }
+    res.redirect(payload.returnTo + '?google=conectado');
+  } catch (err) {
+    console.error('Erro no callback OAuth do Google:', err);
+    res.status(500).send('Erro ao conectar com o Google. Feche esta aba e tente de novo.');
+  }
+});
+
+app.get('/api/google/status', requireAuth, async (req, res) => {
+  const db = scopedClient(req.token);
+  const { data } = await db.from('google_calendar_accounts').select('google_email').eq('user_id', req.user.id).maybeSingle();
+  res.json({ connected: !!data, email: data?.google_email || null });
+});
+
+app.post('/api/google/disconnect', requireAuth, async (req, res) => {
+  const db = scopedClient(req.token);
+  const { error } = await db.from('google_calendar_accounts').delete().eq('user_id', req.user.id);
+  if (error) return res.status(500).json({ error: 'Não consegui desconectar.' });
+  res.json({ ok: true });
+});
+
+async function getValidGoogleAccessToken(userId) {
+  if (!supabaseAdmin) return null;
+  const { data, error } = await supabaseAdmin.from('google_calendar_accounts').select('*').eq('user_id', userId).maybeSingle();
+  if (error || !data) return null;
+
+  const expiresAt = data.access_token_expires_at ? new Date(data.access_token_expires_at).getTime() : 0;
+  if (data.access_token_enc && expiresAt > Date.now() + 60 * 1000) {
+    return decryptToken(data.access_token_enc);
+  }
+
+  const oauth2Client = googleOAuthClient(null);
+  oauth2Client.setCredentials({ refresh_token: decryptToken(data.refresh_token_enc) });
+  const { credentials } = await oauth2Client.refreshAccessToken();
+  await supabaseAdmin.from('google_calendar_accounts').update({
+    access_token_enc: encryptToken(credentials.access_token),
+    access_token_expires_at: credentials.expiry_date ? new Date(credentials.expiry_date).toISOString() : null
+  }).eq('user_id', userId);
+  return credentials.access_token;
+}
+
+// Best-effort: uma falha aqui nunca pode impedir a publicação/edição do
+// evento, que é a função principal do site. Só loga e segue.
+async function syncEventToGoogleCalendar(req, eventRow) {
+  try {
+    if (!eventRow.owner_id) return;
+    const data = eventRow.data || {};
+    if (!data.event_date) return;
+
+    const accessToken = await getValidGoogleAccessToken(eventRow.owner_id);
+    if (!accessToken) return; // dono não conectou o Google Calendar
+
+    const start = new Date(data.event_date);
+    if (isNaN(start.getTime())) return;
+    let end = data.event_end_date ? new Date(data.event_end_date) : null;
+    if (!end || isNaN(end.getTime()) || end <= start) {
+      end = new Date(start.getTime() + 4 * 60 * 60 * 1000);
+    }
+
+    const link = `${req.protocol}://${req.get('host')}/e/${eventRow.id}`;
+    const body = {
+      summary: data.event_title || 'Evento',
+      location: data.event_location || undefined,
+      description: 'Checklist do CAPTURA: ' + link,
+      start: { dateTime: start.toISOString() },
+      end: { dateTime: end.toISOString() }
+    };
+
+    const existingId = eventRow.google_calendar_event_id;
+    const url = existingId
+      ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${existingId}`
+      : 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+
+    const resp = await fetch(url, {
+      method: existingId ? 'PATCH' : 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      console.error('Erro ao sincronizar com Google Calendar:', resp.status, await resp.text());
+      return;
+    }
+    const result = await resp.json();
+    if (!existingId && result.id && supabaseAdmin) {
+      await supabaseAdmin.from('events').update({ google_calendar_event_id: result.id }).eq('id', eventRow.id);
+    }
+  } catch (err) {
+    console.error('Erro ao sincronizar com Google Calendar:', err);
+  }
+}
+
 function validEventPayload(body) {
   const { event_title, phases, scenes, missions, event_date, event_end_date, event_location } = body || {};
   if (!Array.isArray(scenes)) return null;
@@ -238,6 +449,7 @@ app.post('/api/events', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'Não consegui salvar o evento. Tente de novo.' });
   }
   res.json({ id });
+  syncEventToGoogleCalendar(req, { id, owner_id: req.user.id, data: payload, google_calendar_event_id: null });
 });
 
 app.patch('/api/events/:id', requireAuth, async (req, res) => {
@@ -251,7 +463,7 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
     .from('events')
     .update({ data: payload })
     .eq('id', req.params.id)
-    .select('id')
+    .select('id, owner_id, google_calendar_event_id')
     .maybeSingle();
 
   if (error) {
@@ -262,6 +474,7 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
     return res.status(404).json({ error: 'Evento não encontrado ou você não tem permissão pra editar.' });
   }
   res.json({ id: data.id });
+  syncEventToGoogleCalendar(req, { id: data.id, owner_id: data.owner_id, data: payload, google_calendar_event_id: data.google_calendar_event_id });
 });
 
 app.patch('/api/events/:id/permissions', requireAuth, async (req, res) => {

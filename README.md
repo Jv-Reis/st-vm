@@ -36,7 +36,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 7. Qualquer pessoa que abrir o link do evento carrega o mesmo roteiro direto na checklist (sem precisar colar/gerar de novo).
 8. "← Novo roteiro" volta pra tela de importação sem perder o texto colado atual.
 9. **"📄 Relatório"** no topo da checklist gera um resumo (cenas capturadas, horários, missões flagradas) pra imprimir ou salvar como PDF — funciona a qualquer momento, evento completo ou não.
-10. **"📅 Google Calendar"** aparece ao lado do link do evento se a data foi preenchida — abre o Google Calendar já preenchido (título, data, local, link de volta pro checklist na descrição). Cada pessoa que clicar salva na própria agenda; não é um convite automático nem exige login com Google.
+10. **"📅 Google Calendar"** aparece ao lado do link do evento se a data foi preenchida — abre o Google Calendar já preenchido (título, data, local, link de volta pro checklist na descrição). Cada pessoa que clicar salva uma cópia na própria agenda; não exige login com Google. Além disso, o dono do evento pode **"🔗 Conectar Google Calendar"** (no topo da checklist) — depois de conectado uma vez, o próprio evento é criado/atualizado automaticamente na agenda do dono a cada publicação/edição (edita o mesmo evento, não duplica). Veja a seção própria mais abaixo.
 
 ## Login, histórico e edição
 
@@ -56,7 +56,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 - Id estável nos itens de missão (só nas cenas) — reordenar/editar itens de missão num evento com progresso já gravado pode desalinhar o que estava marcado. Baixo risco na prática (missões não têm reorder na prévia hoje).
 - Limpeza do log `event_progress` — cresce sem limite, ainda não é problema na escala atual de uso.
 - Geração de pastas (nome/quantidade) na criação do evento — discutido, adiado de propósito.
-- Google Calendar via API/OAuth — hoje o botão usa um link simples ("adicionar à minha agenda"), então editar a data depois **cria um evento novo** em vez de atualizar o existente. Corrigir isso de verdade exige migrar pra integração OAuth completa (login com Google, app registrado no Google Cloud) — decisão consciente de adiar, pela complexidade.
+- Convidar a equipe toda de uma vez como convidados do evento no Google Calendar (a integração OAuth de hoje sincroniza só na agenda do dono conectado) — possível evolução futura da integração OAuth, ainda não feita.
 
 ## Deploy no Render (pra o link funcionar fora da sua rede)
 
@@ -72,13 +72,11 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
    ```
 3. **Crie uma conta no Render** em [render.com](https://render.com) (sem cartão de crédito no plano free) e conecte sua conta do GitHub.
 4. No painel do Render, clique em **New → Blueprint**, selecione o repositório que você acabou de subir. O Render vai ler o `render.yaml` e configurar o serviço sozinho (nome, comandos de build/start, plano free).
-5. Ele vai pedir pra você preencher 3 variáveis de ambiente (não vêm do arquivo por segurança) — copie os mesmos valores do seu `.env` local:
-   - `GEMINI_API_KEY`
-   - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
+5. Ele vai pedir pra você preencher as variáveis de ambiente (não vêm do arquivo por segurança) — copie os mesmos valores do seu `.env` local: `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` são obrigatórias; `SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `OAUTH_STATE_SECRET` só são necessárias se for usar a sincronização automática com Google Calendar (seção própria mais abaixo) — sem elas o resto do site funciona normal.
 6. Clique em **Deploy**. Em alguns minutos o Render te dá uma URL pública (tipo `https://captura-checklist.onrender.com`) — é esse domínio que substitui o `localhost:3000` pra todo mundo da equipe.
 7. Lembrete do plano free: se ninguém acessar por 15 minutos, o serviço "dorme" e o próximo acesso demora uns 30-50s pra responder (depois volta ao normal). A IA e o banco não têm esse problema, é só o servidor "acordando".
 8. Não esqueça de adicionar a URL de produção (ex: `https://captura-checklist.onrender.com`) nos Redirect URLs do Supabase (Authentication → URL Configuration), senão o magic link só funciona em `localhost`.
+9. Serviço já existente (não é um deploy do zero)? Adicione as variáveis novas direto em **Environment** no painel do serviço no Render (não precisa recriar nada) e clique em "Manual Deploy" depois de salvar.
 
 ## Manter o site acordado (Google Apps Script)
 
@@ -114,8 +112,36 @@ public/icons/          ícones do PWA (gerados a partir da marca já existente, 
 - tabela `events` (`id`, `data` jsonb, `owner_id` uuid, `created_at`, `allow_member_edit` boolean) — o roteiro publicado. SELECT liberado pra `anon` **e** `authenticated`; INSERT só do dono; UPDATE do dono OU (se `allow_member_edit = true`) de quem tiver linha em `event_members` pra esse evento.
 - tabela `event_progress` (`id`, `event_id`, `action`, `payload` jsonb, `created_at`) — log append-only de cada mudança de status de cena (`action: 'status'`, com o status e os horários de "em andamento"/"feito")/missão/reset, usado pra persistir e sincronizar o progresso entre dispositivos. Linhas antigas (`action: 'record'/'unrecord'`, de antes do status em 3 níveis) continuam sendo lidas normalmente, como "feito". Continua público (sem login), de propósito.
 - tabela `event_members` (`event_id`, `user_id`, `created_at`) — relação N:N de "eventos salvos por alguém que não é o dono" (botão "💾 Salvar nos meus eventos"). Todo autenticado só lê/insere/apaga a própria linha (`user_id = auth.uid()`); sem policy pra `anon`.
+- tabela `google_calendar_accounts` (`user_id`, `google_email`, `refresh_token_enc`, `access_token_enc`, `access_token_expires_at`, `created_at`) — conta Google conectada por quem usa a sincronização automática de Calendar. Os tokens ficam **criptografados** (AES-256-GCM, chave só no servidor) antes de salvar — nunca em texto puro no banco. Mesmo padrão de RLS do `event_members`: todo autenticado só lê/insere/apaga a própria linha, sem policy pra `anon`.
+- coluna `google_calendar_event_id` em `events` — guarda o ID do evento criado via API do Google, pra próximas edições **atualizarem** esse evento em vez de criar outro.
 - Auth: magic link por email (Supabase Auth), sem senha, sem provider externo.
 - **Pegadinha de RLS já corrigida:** a policy de SELECT foi criada só `to anon` no começo — funcionava pra ver a checklist (rota pública), mas quebrava silenciosamente o `PATCH /api/events/:id` pra quem estava logado, porque o `UPDATE ... RETURNING` também precisa de permissão de leitura pra devolver a linha, e usuário autenticado não tinha nenhuma policy de SELECT que valesse pra ele. A policy agora cobre `anon, authenticated`.
+
+## Google Calendar via OAuth (opcional)
+
+Sem configurar nada, o botão "📅 Google Calendar" (link simples) continua funcionando normalmente. A parte de **"🔗 Conectar Google Calendar"** (sincronização automática, que edita em vez de duplicar) só liga depois de configurar um projeto no Google Cloud — segue o mesmo espírito do SMTP do Gmail: precisa da sua conta Google, ninguém faz isso por você.
+
+**1. Criar as credenciais no Google Cloud**
+- Acesse [console.cloud.google.com](https://console.cloud.google.com/), crie (ou reaproveite) um projeto, e ative a **Google Calendar API** (menu "APIs e serviços" → "Biblioteca").
+- Em "Tela de permissão OAuth": tipo **Externo**, deixe em modo **"Testing"** e adicione os emails da equipe como **testadores** — evita o processo de revisão do Google (só é obrigatório pra apps públicos com muita gente).
+- Em "Credenciais" → "Criar credenciais" → **ID do cliente OAuth**, tipo **Aplicativo Web**. Em "URIs de redirecionamento autorizados", adicione:
+  - `http://localhost:3000/api/google/oauth/callback` (pra testar local)
+  - `https://captura-checklist.onrender.com/api/google/oauth/callback` (produção)
+- Copie o **Client ID** e o **Client Secret** gerados.
+
+**2. Variáveis de ambiente**
+```
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+SUPABASE_SERVICE_ROLE_KEY=...
+TOKEN_ENCRYPTION_KEY=...
+OAUTH_STATE_SECRET=...
+```
+- `SUPABASE_SERVICE_ROLE_KEY`: em Supabase → Project Settings → API — **nunca** é enviada ao navegador (diferente da anon key), só o servidor usa, e só pra duas coisas: salvar a conta conectada no retorno do OAuth (não existe sessão de usuário nesse momento, é um redirect vindo do Google) e ler o token do *dono* do evento na hora de sincronizar, mesmo quando quem editou foi outra pessoa autorizada.
+- `TOKEN_ENCRYPTION_KEY` / `OAUTH_STATE_SECRET`: gere cada uma rodando `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — são duas chaves aleatórias separadas, sem relação com nenhuma outra credencial do projeto. **Guarde a `TOKEN_ENCRYPTION_KEY` com cuidado**: se ela for perdida ou trocada, todas as contas Google conectadas precisam se reconectar (os tokens salvos ficam ilegíveis sem ela).
+
+**3. Usar**
+Com as variáveis configuradas (local no `.env`, produção nas env vars do Render), o botão "🔗 Conectar Google Calendar" aparece pro dono na checklist ao vivo. Depois de conectar uma vez, publicar/editar aquele evento passa a criar/atualizar automaticamente um evento na agenda do dono — a mesma edição de antes (que só duplicava) agora atualiza o evento certo.
 
 ## PWA (instalar como app)
 
