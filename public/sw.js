@@ -1,4 +1,4 @@
-const CACHE_NAME = 'captura-v2';
+const CACHE_NAME = 'captura-v3';
 const APP_SHELL = [
   '/',
   '/styles.css',
@@ -60,6 +60,11 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.endsWith('/stream')) return;
 
   if (req.mode === 'navigate') {
+    // só trata como "casco" da SPA as rotas que de fato pertencem a ela. Uma
+    // navegação de página inteira pra algo em /api/ (ex: o redirect de volta
+    // do OAuth do Google pra /api/google/oauth/callback) tem que chegar de
+    // verdade no servidor — nunca pode ser respondida com o HTML em cache.
+    if (url.pathname.startsWith('/api/')) return;
     event.respondWith(cacheFirst(new Request('/')));
     return;
   }
