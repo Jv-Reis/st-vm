@@ -128,6 +128,11 @@
       <span class="field-label">Local (opcional)</span>
       <input class="field-input" id="previewEventLocation" type="text" maxlength="120" placeholder="Endereço ou nome do espaço">
     </div>
+    <div class="field-row">
+      <span class="field-label">Estrutura de pastas pro Google Drive (uma por linha, opcional)</span>
+      <textarea class="field-textarea" id="previewDriveFolders" placeholder="Ex: Chegada&#10;Cerimônia&#10;Festa"></textarea>
+    </div>
+    <div class="field-row" id="driveFolderAction"></div>
 
     <div id="previewPhasesContainer"></div>
     <button class="add-btn" id="addPhaseBtn" type="button">+ Adicionar fase</button>
@@ -169,7 +174,7 @@
         <div class="preview-heading">Histórico de roteiros publicados</div>
       </div>
       <div style="display:flex; gap:10px;">
-        <button class="btn" id="googleCalendarConnectBtn" type="button" hidden>🔗 Conectar Google Calendar</button>
+        <button class="btn" id="googleCalendarConnectBtn" type="button" hidden>🔗 Conectar Google (Calendar + Drive)</button>
         <button class="btn btn-primary" id="historyNewBtn" type="button">+ Novo roteiro</button>
       </div>
     </div>

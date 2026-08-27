@@ -30,7 +30,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 1. Escreva o roteiro do jeito que quiser — em qualquer editor (Google Docs, Notion, bloco de notas, ChatGPT, o que for) — e copie o texto todo.
 2. Cole na caixa de texto da tela inicial. (Ou clique em "Usar roteiro de exemplo" pra testar sem ter um roteiro em mãos.)
 3. Clique em "Gerar checklist". A IA organiza o texto em fases, cenas, o que capturar, fala sugerida e regras de pode/não pode.
-4. **Revise na prévia**: ajuste título, textos, ícones e formato de qualquer campo; reordene ou remova cenas e fases (setas ↑/↓ e ✕); adicione cena/fase/categoria de missão manualmente; reatribua uma cena pra outra fase pelo seletor "Fase". Preencher **início, término e local** (todos opcionais) libera o botão de Google Calendar depois de publicar — sem o término preenchido, ou se o término for antes do início, o evento é criado com 4h de duração por padrão (um aviso aparece na prévia se o término preenchido for inválido).
+4. **Revise na prévia**: ajuste título, textos, ícones e formato de qualquer campo; reordene ou remova cenas e fases (setas ↑/↓ e ✕); adicione cena/fase/categoria de missão manualmente; reatribua uma cena pra outra fase pelo seletor "Fase". Preencher **início, término e local** (todos opcionais) libera o botão de Google Calendar depois de publicar — sem o término preenchido, ou se o término for antes do início, o evento é criado com 4h de duração por padrão (um aviso aparece na prévia se o término preenchido for inválido). Tem também um campo de **"Estrutura de pastas pro Google Drive"**, pré-preenchido com o nome das fases — edite como quiser e clique em "📁 Criar estrutura no Google Drive" (exige ter conectado sua conta do Google, veja a seção própria) pra criar de verdade uma pasta com o nome do evento e as subpastas listadas, na sua conta do Drive.
 5. Clique em **"Publicar checklist"** — o evento é salvo no banco e você recebe um link (`/e/algumId`) mostrado no topo da página. Copie e mande pra equipe.
 6. Use a checklist em campo: marque cada cena como **Não iniciado / Em andamento / Feito**, acompanhe o progresso geral e por fase (só "Feito" conta pro percentual), e marque as "missões" (momentos soltos sem ordem fixa) quando flagrar. Cada mudança de status guarda o próprio horário (ex: "Iniciado 14:02 · Concluído 14:15") — útil pra cruzar com o horário dos arquivos na galeria depois. A tela rola livremente (o topo não fica fixo), pra não ocupar espaço da tela em celular.
 7. Qualquer pessoa que abrir o link do evento carrega o mesmo roteiro direto na checklist (sem precisar colar/gerar de novo).
@@ -55,7 +55,7 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
 - Login de terceiros (Google, etc.) — só magic link por email.
 - Id estável nos itens de missão (só nas cenas) — reordenar/editar itens de missão num evento com progresso já gravado pode desalinhar o que estava marcado. Baixo risco na prática (missões não têm reorder na prévia hoje).
 - Limpeza do log `event_progress` — cresce sem limite, ainda não é problema na escala atual de uso.
-- Geração de pastas (nome/quantidade) na criação do evento — discutido, adiado de propósito.
+- Editar a estrutura de pastas do Drive depois de criada (adicionar/remover subpasta num evento já publicado) — v1 só cria uma vez; ajustes depois disso são manuais, direto no Drive.
 - Convidar a equipe toda de uma vez como convidados do evento no Google Calendar (a integração OAuth de hoje sincroniza só na agenda do dono conectado) — possível evolução futura da integração OAuth, ainda não feita.
 
 ## Deploy no Render (pra o link funcionar fora da sua rede)
@@ -112,17 +112,18 @@ public/icons/          ícones do PWA (gerados a partir da marca já existente, 
 - tabela `events` (`id`, `data` jsonb, `owner_id` uuid, `created_at`, `allow_member_edit` boolean) — o roteiro publicado. SELECT liberado pra `anon` **e** `authenticated`; INSERT só do dono; UPDATE do dono OU (se `allow_member_edit = true`) de quem tiver linha em `event_members` pra esse evento.
 - tabela `event_progress` (`id`, `event_id`, `action`, `payload` jsonb, `created_at`) — log append-only de cada mudança de status de cena (`action: 'status'`, com o status e os horários de "em andamento"/"feito")/missão/reset, usado pra persistir e sincronizar o progresso entre dispositivos. Linhas antigas (`action: 'record'/'unrecord'`, de antes do status em 3 níveis) continuam sendo lidas normalmente, como "feito". Continua público (sem login), de propósito.
 - tabela `event_members` (`event_id`, `user_id`, `created_at`) — relação N:N de "eventos salvos por alguém que não é o dono" (botão "💾 Salvar nos meus eventos"). Todo autenticado só lê/insere/apaga a própria linha (`user_id = auth.uid()`); sem policy pra `anon`.
-- tabela `google_calendar_accounts` (`user_id`, `google_email`, `refresh_token_enc`, `access_token_enc`, `access_token_expires_at`, `created_at`) — conta Google conectada por quem usa a sincronização automática de Calendar. Os tokens ficam **criptografados** (AES-256-GCM, chave só no servidor) antes de salvar — nunca em texto puro no banco. Mesmo padrão de RLS do `event_members`: todo autenticado só lê/insere/apaga a própria linha, sem policy pra `anon`.
-- coluna `google_calendar_event_id` em `events` — guarda o ID do evento criado via API do Google, pra próximas edições **atualizarem** esse evento em vez de criar outro.
+- tabela `google_calendar_accounts` (`user_id`, `google_email`, `refresh_token_enc`, `access_token_enc`, `access_token_expires_at`, `created_at`) — conta Google conectada por quem usa a sincronização automática (Calendar + Drive, uma conexão só). Os tokens ficam **criptografados** (AES-256-GCM, chave só no servidor) antes de salvar — nunca em texto puro no banco. Mesmo padrão de RLS do `event_members`: todo autenticado só lê/insere/apaga a própria linha, sem policy pra `anon`.
+- coluna `google_calendar_event_id` em `events` — guarda o ID do evento criado via API do Google Calendar, pra próximas edições **atualizarem** esse evento em vez de criar outro.
+- coluna `drive_folder_id` em `events` — guarda o ID da pasta-mãe criada no Google Drive (se a pessoa usou o botão "Criar estrutura no Google Drive" na prévia). A lista de nomes de subpasta em si (editável) fica dentro do `data` jsonb, como `drive_folders`.
 - Auth: magic link por email (Supabase Auth), sem senha, sem provider externo.
 - **Pegadinha de RLS já corrigida:** a policy de SELECT foi criada só `to anon` no começo — funcionava pra ver a checklist (rota pública), mas quebrava silenciosamente o `PATCH /api/events/:id` pra quem estava logado, porque o `UPDATE ... RETURNING` também precisa de permissão de leitura pra devolver a linha, e usuário autenticado não tinha nenhuma policy de SELECT que valesse pra ele. A policy agora cobre `anon, authenticated`.
 
-## Google Calendar via OAuth (opcional)
+## Google Calendar + Drive via OAuth (opcional)
 
-Sem configurar nada, o botão "📅 Google Calendar" (link simples) continua funcionando normalmente. A parte de **"🔗 Conectar Google Calendar"** (sincronização automática, que edita em vez de duplicar) só liga depois de configurar um projeto no Google Cloud — segue o mesmo espírito do SMTP do Gmail: precisa da sua conta Google, ninguém faz isso por você.
+Sem configurar nada, o botão "📅 Google Calendar" (link simples) continua funcionando normalmente. A parte de **"🔗 Conectar Google (Calendar + Drive)"** (sincronização automática do Calendar, que edita em vez de duplicar, + criação de estrutura de pastas no Drive) só liga depois de configurar um projeto no Google Cloud — segue o mesmo espírito do SMTP do Gmail: precisa da sua conta Google, ninguém faz isso por você. É **uma conexão só** cobrindo as duas coisas — não precisa conectar duas vezes.
 
 **1. Criar as credenciais no Google Cloud**
-- Acesse [console.cloud.google.com](https://console.cloud.google.com/), crie (ou reaproveite) um projeto, e ative a **Google Calendar API** (menu "APIs e serviços" → "Biblioteca").
+- Acesse [console.cloud.google.com](https://console.cloud.google.com/), crie (ou reaproveite) um projeto, e ative a **Google Calendar API** e a **Google Drive API** (menu "APIs e serviços" → "Biblioteca", uma de cada vez).
 - Em "Tela de permissão OAuth": tipo **Externo**, deixe em modo **"Testing"** e adicione os emails da equipe como **testadores** — evita o processo de revisão do Google (só é obrigatório pra apps públicos com muita gente).
 - Em "Credenciais" → "Criar credenciais" → **ID do cliente OAuth**, tipo **Aplicativo Web**. Em "URIs de redirecionamento autorizados", adicione:
   - `http://localhost:3000/api/google/oauth/callback` (pra testar local)
@@ -141,7 +142,11 @@ OAUTH_STATE_SECRET=...
 - `TOKEN_ENCRYPTION_KEY` / `OAUTH_STATE_SECRET`: gere cada uma rodando `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — são duas chaves aleatórias separadas, sem relação com nenhuma outra credencial do projeto. **Guarde a `TOKEN_ENCRYPTION_KEY` com cuidado**: se ela for perdida ou trocada, todas as contas Google conectadas precisam se reconectar (os tokens salvos ficam ilegíveis sem ela).
 
 **3. Usar**
-Com as variáveis configuradas (local no `.env`, produção nas env vars do Render), o botão "🔗 Conectar Google Calendar" aparece em **"Meus eventos"** (é uma configuração da conta, não de um evento específico — conecta uma vez só). Depois de conectado, publicar/editar qualquer evento seu com data passa a criar/atualizar automaticamente na sua agenda — a mesma edição de antes (que só duplicava) agora atualiza o evento certo.
+Com as variáveis configuradas (local no `.env`, produção nas env vars do Render), o botão "🔗 Conectar Google (Calendar + Drive)" aparece em **"Meus eventos"** (é uma configuração da conta, não de um evento específico — conecta uma vez só). Depois de conectado:
+- Publicar/editar qualquer evento seu com data passa a criar/atualizar automaticamente na sua agenda — a mesma edição de antes (que só duplicava) agora atualiza o evento certo.
+- Na prévia de qualquer evento, o campo "Estrutura de pastas pro Google Drive" + botão "📁 Criar estrutura no Google Drive" cria de verdade uma pasta com o nome do evento (e as subpastas listadas) no seu Drive — só a estrutura vazia, o site nunca guarda nem envia foto/arquivo nenhum.
+
+Quem já tinha conectado só pro Calendar antes dessa atualização precisa **desconectar e conectar de novo** pra liberar o Drive também (a permissão de Drive só é concedida numa conexão nova).
 
 ## PWA (instalar como app)
 

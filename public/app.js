@@ -55,6 +55,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const previewEventEndDate = document.getElementById('previewEventEndDate');
   const eventDateWarning = document.getElementById('eventDateWarning');
   const previewEventLocation = document.getElementById('previewEventLocation');
+  const previewDriveFolders = document.getElementById('previewDriveFolders');
+  const driveFolderAction = document.getElementById('driveFolderAction');
   const calendarLinkBtn = document.getElementById('calendarLinkBtn');
 
   const VIEWS = { loading: loadingView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView };
@@ -168,6 +170,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       event_date: data.event_date || '',
       event_end_date: data.event_end_date || '',
       event_location: data.event_location || '',
+      drive_folders: Array.isArray(data.drive_folders) && data.drive_folders.length
+        ? data.drive_folders
+        : (data.phases || []).map(p => p.label || 'Fase'),
+      drive_folder_id: data.drive_folder_id || null,
       phases: (data.phases || []).map(p => ({
         key: p.key || ('fase_' + Math.random().toString(36).slice(2, 8)),
         label: p.label || 'Fase',
@@ -205,6 +211,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     previewEventDate.value = draft.event_date || '';
     previewEventEndDate.value = draft.event_end_date || '';
     previewEventLocation.value = draft.event_location || '';
+    previewDriveFolders.value = (draft.drive_folders || []).join('\n');
+    renderDriveFolderAction();
     validateEventDates();
 
     previewPhasesContainer.innerHTML = draft.phases.map((phase, pIdx) => {
@@ -354,6 +362,44 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   previewEventLocation.addEventListener('input', function(e){
     if(draft) draft.event_location = e.target.value;
   });
+
+  previewDriveFolders.addEventListener('input', function(e){
+    if(draft) draft.drive_folders = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+  });
+
+  function renderDriveFolderAction(){
+    if(draft.drive_folder_id){
+      driveFolderAction.innerHTML = '<a class="btn" href="https://drive.google.com/drive/folders/'+encodeURIComponent(draft.drive_folder_id)+'" target="_blank" rel="noopener">📁 Abrir pasta no Drive</a>';
+    } else {
+      driveFolderAction.innerHTML = '<button class="btn" id="createDriveFolderBtn" type="button">📁 Criar estrutura no Google Drive</button>';
+    }
+  }
+
+  async function createDriveFolderStructure(){
+    const folders = previewDriveFolders.value.split('\n').map(s => s.trim()).filter(Boolean);
+    if(!folders.length){
+      alert('Adicione pelo menos um nome de pasta antes de criar a estrutura.');
+      return;
+    }
+    const btn = document.getElementById('createDriveFolderBtn');
+    if(btn){ btn.disabled = true; btn.textContent = 'Criando…'; }
+    try {
+      const token = await accessToken();
+      if(!token) throw new Error('Faça login pra usar essa função.');
+      const resp = await fetch('/api/google/drive-folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ eventTitle: draft.event_title, folders })
+      });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error || 'Erro ao criar a estrutura.');
+      draft.drive_folder_id = result.folderId;
+      renderDriveFolderAction();
+    } catch(err){
+      alert('Não consegui criar a estrutura (' + (err.message || 'erro desconhecido') + ').');
+      if(btn){ btn.disabled = false; btn.textContent = '📁 Criar estrutura no Google Drive'; }
+    }
+  }
 
   document.getElementById('addPhaseBtn').addEventListener('click', function(){
     draft.phases.push({ key: 'fase_' + Math.random().toString(36).slice(2, 8), label: 'Nova fase', icon: 'flag' });
@@ -663,8 +709,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       googleCalendarConnected = !!result.connected;
       googleCalendarConnectBtn.hidden = false;
       googleCalendarConnectBtn.textContent = googleCalendarConnected
-        ? '📅 Google Calendar conectado (desconectar)'
-        : '🔗 Conectar Google Calendar';
+        ? '📅 Google conectado (desconectar)'
+        : '🔗 Conectar Google (Calendar + Drive)';
     } catch(err){
       googleCalendarConnectBtn.hidden = true;
     }
@@ -676,11 +722,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       const token = await accessToken();
       if(!token) throw new Error('Sessão expirada. Faça login de novo.');
       if(googleCalendarConnected){
-        if(!confirm('Desconectar sua conta do Google Calendar? Os eventos já criados na sua agenda continuam lá, mas deixam de ser atualizados automaticamente.')) return;
+        if(!confirm('Desconectar sua conta do Google? Os eventos já criados na sua agenda e as pastas já criadas no Drive continuam lá, mas deixam de ser atualizados automaticamente.')) return;
         const resp = await fetch('/api/google/disconnect', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
         if(!resp.ok) throw new Error('Erro ao desconectar.');
         googleCalendarConnected = false;
-        googleCalendarConnectBtn.textContent = '🔗 Conectar Google Calendar';
+        googleCalendarConnectBtn.textContent = '🔗 Conectar Google (Calendar + Drive)';
       } else {
         const resp = await fetch('/api/google/connect', { headers: { Authorization: 'Bearer ' + token } });
         const result = await resp.json();
@@ -833,7 +879,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     refreshGoogleCalendarButton();
     if(new URLSearchParams(window.location.search).get('google') === 'conectado'){
       history.replaceState({}, '', '/historico');
-      alert('Google Calendar conectado! A partir de agora, seus eventos com data sincronizam automaticamente.');
+      alert('Google conectado! A partir de agora, seus eventos com data sincronizam automaticamente com o Calendar, e você já pode criar estruturas de pastas no Drive.');
     }
     try {
       const token = await accessToken();
@@ -1160,6 +1206,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
     const statusBtn = e.target.closest('.status-btn');
     if(statusBtn){ setSceneStatus(statusBtn.dataset.id, statusBtn.dataset.status); return; }
+
+    if(e.target.closest('#createDriveFolderBtn')){ createDriveFolderStructure(); return; }
 
     const chip = e.target.closest('.mission-chip');
     if(chip){ toggleMission(chip.dataset.cat, Number(chip.dataset.idx)); return; }

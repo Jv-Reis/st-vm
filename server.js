@@ -278,7 +278,13 @@ app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
 
 // ---------- Google Calendar (OAuth) ----------
 
-const GOOGLE_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+// drive.file: só arquivos/pastas que o próprio CAPTURA criar, nunca o Drive
+// inteiro da pessoa. O código só chama o endpoint de criar pasta — nunca o
+// de upload de conteúdo — então essa permissão nunca é usada além disso.
+const GOOGLE_SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/drive.file'
+];
 
 function buildGoogleRedirectUri(req) {
   return `${req.protocol}://${req.get('host')}/api/google/oauth/callback`;
@@ -297,7 +303,7 @@ app.get('/api/google/connect', requireAuth, (req, res) => {
   const url = googleOAuthClient(req).generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: [GOOGLE_CALENDAR_SCOPE],
+    scope: GOOGLE_SCOPES,
     state
   });
   res.json({ url });
@@ -421,8 +427,53 @@ async function syncEventToGoogleCalendar(req, eventRow) {
   }
 }
 
+async function driveCreateFolder(accessToken, name, parentId) {
+  const body = { name, mimeType: 'application/vnd.google-apps.folder' };
+  if (parentId) body.parents = [parentId];
+  const resp = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok) {
+    const e = new Error('drive create failed');
+    e.status = resp.status;
+    throw e;
+  }
+  return resp.json();
+}
+
+// Diferente da sincronização do Calendar (automática a cada publicação),
+// criar pastas no Drive é uma ação explícita — só roda quando a pessoa
+// clica no botão, nunca em segundo plano.
+app.post('/api/google/drive-folders', requireAuth, async (req, res) => {
+  const { eventTitle, folders } = req.body || {};
+  if (!Array.isArray(folders) || !folders.length) {
+    return res.status(400).json({ error: 'Adicione pelo menos uma pasta.' });
+  }
+  const accessToken = await getValidGoogleAccessToken(req.user.id);
+  if (!accessToken) {
+    return res.status(400).json({ error: 'Conecte sua conta do Google primeiro (em "Meus eventos").' });
+  }
+  try {
+    const parent = await driveCreateFolder(accessToken, eventTitle || 'Evento CAPTURA', null);
+    for (const name of folders) {
+      await driveCreateFolder(accessToken, name, parent.id);
+    }
+    res.json({ folderId: parent.id, folderUrl: `https://drive.google.com/drive/folders/${parent.id}` });
+  } catch (err) {
+    console.error('Erro ao criar estrutura no Drive:', err);
+    const scopeIssue = err.status === 403;
+    res.status(500).json({
+      error: scopeIssue
+        ? 'Sua conexão com o Google não inclui acesso ao Drive ainda — desconecte e conecte de novo em "Meus eventos".'
+        : 'Não consegui criar a estrutura no Drive. Tente de novo.'
+    });
+  }
+});
+
 function validEventPayload(body) {
-  const { event_title, phases, scenes, missions, event_date, event_end_date, event_location } = body || {};
+  const { event_title, phases, scenes, missions, event_date, event_end_date, event_location, drive_folders } = body || {};
   if (!Array.isArray(scenes)) return null;
   return {
     event_title: event_title || 'Evento sem nome',
@@ -431,7 +482,8 @@ function validEventPayload(body) {
     missions: missions || [],
     event_date: event_date || '',
     event_end_date: event_end_date || '',
-    event_location: event_location || ''
+    event_location: event_location || '',
+    drive_folders: Array.isArray(drive_folders) ? drive_folders : []
   };
 }
 
@@ -442,8 +494,9 @@ app.post('/api/events', requireAuth, async (req, res) => {
   }
 
   const id = crypto.randomUUID().split('-')[0];
+  const driveFolderId = typeof req.body.drive_folder_id === 'string' ? req.body.drive_folder_id : null;
   const db = scopedClient(req.token);
-  const { error } = await db.from('events').insert({ id, data: payload, owner_id: req.user.id });
+  const { error } = await db.from('events').insert({ id, data: payload, owner_id: req.user.id, drive_folder_id: driveFolderId });
   if (error) {
     console.error('Erro ao salvar evento:', error);
     return res.status(500).json({ error: 'Não consegui salvar o evento. Tente de novo.' });
@@ -458,10 +511,13 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Formato de evento inválido.' });
   }
 
+  const updateFields = { data: payload };
+  if (typeof req.body.drive_folder_id === 'string') updateFields.drive_folder_id = req.body.drive_folder_id;
+
   const db = scopedClient(req.token);
   const { data, error } = await db
     .from('events')
-    .update({ data: payload })
+    .update(updateFields)
     .eq('id', req.params.id)
     .select('id, owner_id, google_calendar_event_id')
     .maybeSingle();
@@ -588,14 +644,14 @@ app.get('/api/events/:id', async (req, res) => {
 
   const id = req.params.id;
   const [{ data: row, error }, { data: progressRows }] = await Promise.all([
-    supabase.from('events').select('data, owner_id, allow_member_edit').eq('id', id).maybeSingle(),
+    supabase.from('events').select('data, owner_id, allow_member_edit, drive_folder_id').eq('id', id).maybeSingle(),
     supabase.from('event_progress').select('action, payload').eq('event_id', id).order('created_at', { ascending: true })
   ]);
 
   if (error || !row) {
     return res.status(404).json({ error: 'Evento não encontrado. O link pode estar errado ou o evento foi removido.' });
   }
-  res.json({ ...row.data, owner_id: row.owner_id, allow_member_edit: !!row.allow_member_edit, progress: foldProgress(progressRows || []) });
+  res.json({ ...row.data, owner_id: row.owner_id, allow_member_edit: !!row.allow_member_edit, drive_folder_id: row.drive_folder_id || null, progress: foldProgress(progressRows || []) });
 });
 
 // ---------- progresso em tempo real (SSE) ----------
