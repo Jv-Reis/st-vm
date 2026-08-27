@@ -443,6 +443,33 @@ async function driveCreateFolder(accessToken, name, parentId) {
   return resp.json();
 }
 
+// Cada item de "folders" pode ser um caminho tipo "Final/Fotos finais" —
+// "/" separa níveis de pasta. Um cache por caminho já percorrido evita criar
+// a mesma pasta intermediária duas vezes quando várias linhas compartilham
+// um ancestral (ex: "Final/Fotos finais" e "Final/Vídeos finais" só criam
+// "Final" uma vez).
+async function driveCreateFolderTree(accessToken, rootName, paths) {
+  const root = await driveCreateFolder(accessToken, rootName, null);
+  const idByPath = new Map();
+
+  for (const rawPath of paths) {
+    const segments = String(rawPath).split('/').map(s => s.trim()).filter(Boolean);
+    let parentId = root.id;
+    let currentPath = '';
+    for (const segment of segments) {
+      currentPath = currentPath ? currentPath + '/' + segment : segment;
+      if (idByPath.has(currentPath)) {
+        parentId = idByPath.get(currentPath);
+        continue;
+      }
+      const folder = await driveCreateFolder(accessToken, segment, parentId);
+      idByPath.set(currentPath, folder.id);
+      parentId = folder.id;
+    }
+  }
+  return root;
+}
+
 // Diferente da sincronização do Calendar (automática a cada publicação),
 // criar pastas no Drive é uma ação explícita — só roda quando a pessoa
 // clica no botão, nunca em segundo plano.
@@ -456,11 +483,8 @@ app.post('/api/google/drive-folders', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Conecte sua conta do Google primeiro (em "Meus eventos").' });
   }
   try {
-    const parent = await driveCreateFolder(accessToken, eventTitle || 'Evento CAPTURA', null);
-    for (const name of folders) {
-      await driveCreateFolder(accessToken, name, parent.id);
-    }
-    res.json({ folderId: parent.id, folderUrl: `https://drive.google.com/drive/folders/${parent.id}` });
+    const root = await driveCreateFolderTree(accessToken, eventTitle || 'Evento CAPTURA', folders);
+    res.json({ folderId: root.id, folderUrl: `https://drive.google.com/drive/folders/${root.id}` });
   } catch (err) {
     console.error('Erro ao criar estrutura no Drive:', err);
     const scopeIssue = err.status === 403;
