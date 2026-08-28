@@ -135,7 +135,7 @@ a{color:inherit;}
 .cal-nav-label{font-family:var(--font-display); font-weight:700; font-size:1rem; text-transform:capitalize;}
 .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px;}
 .cal-day-label{font-family:var(--font-mono); font-size:0.62rem; color:var(--text-faint); text-align:center; padding-bottom:4px; text-transform:uppercase; letter-spacing:0.05em;}
-.cal-cell{min-height:72px; border:1px solid var(--border); border-radius:var(--radius-sm); padding:5px; background:var(--surface);}
+.cal-cell{min-height:72px; min-width:0; border:1px solid var(--border); border-radius:var(--radius-sm); padding:5px; background:var(--surface);}
 .cal-cell.empty{background:transparent; border-color:transparent;}
 .cal-date{font-family:var(--font-mono); font-size:0.66rem; color:var(--text-faint); display:block; margin-bottom:3px;}
 .cal-event{display:block; width:100%; text-align:left; background:var(--amber-soft); color:var(--amber); border:none; border-radius:4px; padding:2px 5px; margin-bottom:3px; font-family:var(--font-mono); font-size:0.62rem; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}

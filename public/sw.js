@@ -1,4 +1,4 @@
-const CACHE_NAME = 'captura-v6';
+const CACHE_NAME = 'captura-v7';
 const APP_SHELL = [
   '/',
   '/styles.css',
