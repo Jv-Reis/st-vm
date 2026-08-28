@@ -9,27 +9,49 @@ import { OAuth2Client } from 'google-auth-library';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-app.set('trust proxy', true); // necessário pra req.ip refletir o IP real por trás do proxy do Render
+// Confia só no primeiro salto (o proxy do Render em si) — "true" confiaria
+// na cadeia inteira de X-Forwarded-For, deixando o próprio cliente forjar o
+// IP que os limitadores de requisição acima enxergam.
+app.set('trust proxy', 1);
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rate limit simples em memória (1 instância, sem Redis) — protege a cota
-// gratuita do Gemini de abuso, já que /api/parse-roteiro é público (sem login).
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
-const RATE_LIMIT_MAX = 10;
-const rateLimitHits = new Map(); // ip -> timestamps[]
-
-function rateLimit(req, res, next) {
-  const ip = req.ip || 'unknown';
-  const now = Date.now();
-  const hits = (rateLimitHits.get(ip) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
-  if (hits.length >= RATE_LIMIT_MAX) {
-    return res.status(429).json({ error: 'Muitas gerações em pouco tempo. Espere alguns minutos e tente de novo.' });
-  }
-  hits.push(now);
-  rateLimitHits.set(ip, hits);
-  next();
+// Rate limit simples em memória (1 instância, sem Redis) — protege rotas
+// públicas (sem login) de abuso. Cada rota usa sua própria instância porque
+// os limites fazem sentido em escalas bem diferentes (gerar roteiro custa
+// cota da IA; marcar progresso é barato mas pode ser chamado com muito mais
+// frequência num uso legítimo, com vários membros da equipe no mesmo evento).
+function makeRateLimiter(windowMs, max, message) {
+  const hits = new Map(); // ip -> timestamps[]
+  return function rateLimit(req, res, next) {
+    const ip = req.ip || 'unknown';
+    const now = Date.now();
+    const recent = (hits.get(ip) || []).filter(t => now - t < windowMs);
+    if (recent.length >= max) {
+      return res.status(429).json({ error: message });
+    }
+    recent.push(now);
+    hits.set(ip, recent);
+    next();
+  };
 }
+
+const rateLimit = makeRateLimiter(
+  15 * 60 * 1000, 10,
+  'Muitas gerações em pouco tempo. Espere alguns minutos e tente de novo.'
+);
+const progressRateLimit = makeRateLimiter(
+  60 * 1000, 120,
+  'Muitas atualizações de progresso em pouco tempo. Espere um instante e tente de novo.'
+);
 
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY)
@@ -708,7 +730,7 @@ function broadcastProgress(eventId, message) {
   for (const res of subs) res.write(chunk);
 }
 
-app.post('/api/events/:id/progress', async (req, res) => {
+app.post('/api/events/:id/progress', progressRateLimit, async (req, res) => {
   const id = req.params.id;
   const { action, payload } = req.body || {};
 

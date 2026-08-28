@@ -118,6 +118,14 @@ public/icons/          ícones do PWA (gerados a partir da marca já existente, 
 - Auth: magic link por email (Supabase Auth), sem senha, sem provider externo.
 - **Pegadinha de RLS já corrigida:** a policy de SELECT foi criada só `to anon` no começo — funcionava pra ver a checklist (rota pública), mas quebrava silenciosamente o `PATCH /api/events/:id` pra quem estava logado, porque o `UPDATE ... RETURNING` também precisa de permissão de leitura pra devolver a linha, e usuário autenticado não tinha nenhuma policy de SELECT que valesse pra ele. A policy agora cobre `anon, authenticated`.
 
+## Segurança
+
+Feita uma revisão manual do projeto inteiro (RLS de cada tabela conferida ao vivo no banco, escaping de HTML em todo lugar que renderiza texto do usuário, histórico do Git checado por segredo vazado, `npm audit`). Achados e correções:
+- **Limitador de requisições** por IP em `/api/parse-roteiro` (10/15min, protege a cota do Gemini) e em `/api/events/:id/progress` (120/min — mais generoso porque é uso legítimo normal de uma equipe inteira marcando progresso ao vivo, mas evita inundar a tabela de progresso, que é pública e sem login de propósito).
+- `trust proxy` ajustado de `true` pra `1` — confia só no proxy do próprio Render, não deixa o cliente forjar o IP que os limitadores acima enxergam.
+- Cabeçalhos básicos de segurança em toda resposta: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
+- Tokens do Google, `SUPABASE_SERVICE_ROLE_KEY` e as chaves de criptografia/assinatura nunca chegam ao navegador nem ao Git (`.env` sempre ignorado, conferido no histórico inteiro do repositório).
+
 ## Google Calendar + Drive via OAuth (opcional)
 
 Sem configurar nada, o botão "📅 Google Calendar" (link simples) continua funcionando normalmente. A parte de **"🔗 Conectar Google (Calendar + Drive)"** (sincronização automática do Calendar, que edita em vez de duplicar, + criação de estrutura de pastas no Drive) só liga depois de configurar um projeto no Google Cloud — segue o mesmo espírito do SMTP do Gmail: precisa da sua conta Google, ninguém faz isso por você. É **uma conexão só** cobrindo as duas coisas — não precisa conectar duas vezes.
