@@ -684,13 +684,18 @@ app.delete('/api/events/:id/save', requireAuth, async (req, res) => {
 });
 
 app.get('/api/events/:id', async (req, res) => {
-  if (!supabase) {
-    return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
+  if (!supabase || !supabaseAdmin) {
+    return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY não configuradas no servidor.' });
   }
 
   const id = req.params.id;
+  // service role (não a anon key) de propósito: a policy de SELECT do `events` não
+  // libera mais a role `anon` (só assim dava pra alguém buscar a tabela inteira direto
+  // no PostgREST usando a mesma anon key pública que o navegador recebe via /api/config,
+  // ignorando esse filtro por id). O `event_progress` continua com a role `anon`, que
+  // segue liberada nele de propósito.
   const [{ data: row, error }, { data: progressRows }] = await Promise.all([
-    supabase.from('events').select('data, owner_id, allow_member_edit, drive_folder_id').eq('id', id).maybeSingle(),
+    supabaseAdmin.from('events').select('data, owner_id, allow_member_edit, drive_folder_id').eq('id', id).maybeSingle(),
     supabase.from('event_progress').select('action, payload').eq('event_id', id).order('created_at', { ascending: true })
   ]);
 
