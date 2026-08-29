@@ -266,7 +266,7 @@ app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const response = await generateWithRetry(ai, {
-      model: 'gemini-flash-latest',
+      model: 'gemini-3.6-flash',
       contents: text,
       config: {
         systemInstruction: SYSTEM_PROMPT,
