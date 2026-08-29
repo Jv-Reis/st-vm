@@ -4,7 +4,7 @@ Cole o roteiro de cobertura de um evento (texto livre, sem formato fixo) e o sit
 
 O progresso de "gravado" é sincronizado em tempo real entre todos os dispositivos que estão vendo o mesmo evento. Publicar exige login (magic link, sem senha) — só quem cria/edita evento precisa de conta; a equipe que só abre o link em campo continua sem login. Dá pra ver o histórico de eventos publicados, editar um evento sem trocar o link, e exportar um relatório de cobertura (imprimir / salvar como PDF) a qualquer momento.
 
-Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão de crédito nem gastar nada dentro da cota gratuita (10 requisições/min, ~250-500/dia, mais do que suficiente pra uso de uma equipe pequena). O banco é **Supabase (Postgres)**, também no plano gratuito ($0/mês) — os eventos publicados persistem de verdade, sobrevivem a restart/redeploy do servidor.
+Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em checklist — diferente do Gemini que era usado antes, a Anthropic não tem um plano perpétuo grátis, precisa de créditos pré-pagos em [console.anthropic.com](https://console.anthropic.com/settings/billing), mas o custo por roteiro processado é baixo. O banco é **Supabase (Postgres)**, no plano gratuito ($0/mês) — os eventos publicados persistem de verdade, sobrevivem a restart/redeploy do servidor.
 
 ## Como rodar
 
@@ -12,12 +12,12 @@ Usa a **API do Gemini (Google)** no plano gratuito — não precisa de cartão d
    ```bash
    npm install
    ```
-2. Pegue uma chave grátis do Gemini em [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (login com conta Google, sem cartão de crédito).
+2. Pegue uma chave da Anthropic em [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) (precisa adicionar créditos pré-pagos — não tem plano perpétuo grátis).
 3. Copie `.env.example` para `.env`:
    ```bash
    cp .env.example .env
    ```
-4. Preencha o `.env` com a chave do Gemini e as credenciais do projeto Supabase (`SUPABASE_URL` e `SUPABASE_ANON_KEY` — em [supabase.com/dashboard](https://supabase.com/dashboard), aba Settings → API do projeto).
+4. Preencha o `.env` com a chave da Anthropic e as credenciais do projeto Supabase (`SUPABASE_URL` e `SUPABASE_ANON_KEY` — em [supabase.com/dashboard](https://supabase.com/dashboard), aba Settings → API do projeto).
 5. No dashboard do Supabase, em **Authentication → URL Configuration**, adicione `http://localhost:3000` (e a URL de produção, se tiver) na lista de Redirect URLs — sem isso o login por magic link falha silenciosamente.
 6. Suba o servidor:
    ```bash
@@ -91,12 +91,12 @@ function pingCaptura() {
 
 **Configuração do gatilho:** no projeto do Apps Script → ícone de relógio (Gatilhos) → Adicionar gatilho → função `pingCaptura`, origem "Baseado em tempo", tipo "Timer de minutos", intervalo "A cada 10 minutos". Autorizar o script a fazer requisições externas na primeira execução (prompt normal do próprio Google, é o script pedindo permissão dentro da conta de quem o criou).
 
-Bate só na raiz (`/`) — não consome cota do Gemini nem faz nenhuma escrita no banco, é só o suficiente pra manter o processo do Render vivo.
+Bate só na raiz (`/`) — não consome créditos da Anthropic nem faz nenhuma escrita no banco, é só o suficiente pra manter o processo do Render vivo.
 
 ## Estrutura do projeto
 
 ```
-server.js              Express: /api/parse-roteiro (Gemini), /api/events (CRUD + histórico, autenticado), /api/config,
+server.js              Express: /api/parse-roteiro (Anthropic/Claude), /api/events (CRUD + histórico, autenticado), /api/config,
                         progresso em tempo real (SSE), rotas /e/:id, /e/:id/editar, /historico
 public/index.html      import + prévia editável + login + histórico + checklist + relatório (uma página, alterna via JS)
 public/styles.css      estilos (adaptados do protótipo original)
@@ -105,7 +105,7 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 public/manifest.json   manifesto do PWA (nome, ícones, cores) — instalabilidade
 public/sw.js           service worker: cache do app shell e do último evento aberto, pra abrir offline
 public/icons/          ícones do PWA (gerados a partir da marca já existente, sem arte nova)
-.env.example            modelo de variáveis de ambiente (GEMINI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, PORT)
+.env.example            modelo de variáveis de ambiente (ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, PORT)
 ```
 
 **Projeto Supabase:** `captura-checklist` (região sa-east-1 / São Paulo).
@@ -121,7 +121,7 @@ public/icons/          ícones do PWA (gerados a partir da marca já existente, 
 ## Segurança
 
 Feita uma revisão manual do projeto inteiro (RLS de cada tabela conferida ao vivo no banco, escaping de HTML em todo lugar que renderiza texto do usuário, histórico do Git checado por segredo vazado, `npm audit`). Achados e correções:
-- **Limitador de requisições** por IP em `/api/parse-roteiro` (10/15min, protege a cota do Gemini) e em `/api/events/:id/progress` (120/min — mais generoso porque é uso legítimo normal de uma equipe inteira marcando progresso ao vivo, mas evita inundar a tabela de progresso, que é pública e sem login de propósito).
+- **Limitador de requisições** por IP em `/api/parse-roteiro` (10/15min, protege o gasto na API da Anthropic) e em `/api/events/:id/progress` (120/min — mais generoso porque é uso legítimo normal de uma equipe inteira marcando progresso ao vivo, mas evita inundar a tabela de progresso, que é pública e sem login de propósito).
 - `trust proxy` ajustado de `true` pra `1` — confia só no proxy do próprio Render, não deixa o cliente forjar o IP que os limitadores acima enxergam.
 - Cabeçalhos básicos de segurança em toda resposta: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
 - Tokens do Google, `SUPABASE_SERVICE_ROLE_KEY` e as chaves de criptografia/assinatura nunca chegam ao navegador nem ao Git (`.env` sempre ignorado, conferido no histórico inteiro do repositório).

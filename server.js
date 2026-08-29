@@ -4,7 +4,9 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
-import { GoogleGenAI, Type } from '@google/genai';
+import Anthropic from '@anthropic-ai/sdk';
+import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { z } from 'zod';
 import { OAuth2Client } from 'google-auth-library';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -154,62 +156,31 @@ app.get('/api/config', (req, res) => {
 
 const ICONS = ['pin', 'gear', 'mic', 'play', 'users', 'cup', 'chat', 'flag', 'film', 'box', 'signal', 'heart'];
 
-const CHECKLIST_SCHEMA = {
-  type: Type.OBJECT,
-  required: ['event_title', 'phases', 'scenes', 'missions'],
-  properties: {
-    event_title: {
-      type: Type.STRING,
-      description: 'Nome do evento. Se o texto não disser explicitamente, infira algo curto e razoável.'
-    },
-    phases: {
-      type: Type.ARRAY,
-      description: 'Momentos/fases do evento, na ordem em que acontecem (ex: chegada, cerimônia, festa).',
-      items: {
-        type: Type.OBJECT,
-        required: ['key', 'label', 'icon'],
-        properties: {
-          key: { type: Type.STRING, description: 'Identificador curto em snake_case, sem acento, ex: chegada' },
-          label: { type: Type.STRING, description: 'Nome legível da fase, ex: Chegada & Preparação' },
-          icon: { type: Type.STRING, enum: ICONS }
-        }
-      }
-    },
-    scenes: {
-      type: Type.ARRAY,
-      description: 'Cada cena/momento individual do roteiro a ser capturado.',
-      items: {
-        type: Type.OBJECT,
-        required: ['phase', 'order', 'title', 'icon', 'formato', 'capture', 'speech', 'can', 'cannot'],
-        properties: {
-          phase: { type: Type.STRING, description: 'Deve bater exatamente com um "key" de alguma fase em phases.' },
-          order: { type: Type.INTEGER, description: 'Ordem da cena dentro do roteiro geral, começando em 1.' },
-          title: { type: Type.STRING },
-          icon: { type: Type.STRING, enum: ICONS },
-          formato: { type: Type.STRING, description: 'Ex: "Story ao vivo" ou "Reels (editado)". Use o que o texto indicar; se não indicar, use "Story ao vivo".' },
-          capture: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Lista curta do que captar nessa cena.' },
-          speech: { type: Type.STRING, description: 'Fala/legenda sugerida, se houver no texto original. String vazia se não houver.' },
-          can: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'O que pode fazer nessa cena. Pode ser vazio.' },
-          cannot: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'O que não pode fazer nessa cena. Pode ser vazio.' }
-        }
-      }
-    },
-    missions: {
-      type: Type.ARRAY,
-      description: 'Categorias de momentos soltos para flagrar a qualquer hora, sem ordem fixa (se o texto tiver algo assim). Array vazio se não houver.',
-      items: {
-        type: Type.OBJECT,
-        required: ['key', 'emoji', 'label', 'items'],
-        properties: {
-          key: { type: Type.STRING },
-          emoji: { type: Type.STRING, description: 'Um emoji representando a categoria.' },
-          label: { type: Type.STRING },
-          items: { type: Type.ARRAY, items: { type: Type.STRING } }
-        }
-      }
-    }
-  }
-};
+const CHECKLIST_SCHEMA = z.object({
+  event_title: z.string().describe('Nome do evento. Se o texto não disser explicitamente, infira algo curto e razoável.'),
+  phases: z.array(z.object({
+    key: z.string().describe('Identificador curto em snake_case, sem acento, ex: chegada'),
+    label: z.string().describe('Nome legível da fase, ex: Chegada & Preparação'),
+    icon: z.enum(ICONS)
+  })).describe('Momentos/fases do evento, na ordem em que acontecem (ex: chegada, cerimônia, festa).'),
+  scenes: z.array(z.object({
+    phase: z.string().describe('Deve bater exatamente com um "key" de alguma fase em phases.'),
+    order: z.number().int().describe('Ordem da cena dentro do roteiro geral, começando em 1.'),
+    title: z.string(),
+    icon: z.enum(ICONS),
+    formato: z.string().describe('Ex: "Story ao vivo" ou "Reels (editado)". Use o que o texto indicar; se não indicar, use "Story ao vivo".'),
+    capture: z.array(z.string()).describe('Lista curta do que captar nessa cena.'),
+    speech: z.string().describe('Fala/legenda sugerida, se houver no texto original. String vazia se não houver.'),
+    can: z.array(z.string()).describe('O que pode fazer nessa cena. Pode ser vazio.'),
+    cannot: z.array(z.string()).describe('O que não pode fazer nessa cena. Pode ser vazio.')
+  })).describe('Cada cena/momento individual do roteiro a ser capturado.'),
+  missions: z.array(z.object({
+    key: z.string(),
+    emoji: z.string().describe('Um emoji representando a categoria.'),
+    label: z.string(),
+    items: z.array(z.string())
+  })).describe('Categorias de momentos soltos para flagrar a qualquer hora, sem ordem fixa (se o texto tiver algo assim). Array vazio se não houver.')
+});
 
 const SYSTEM_PROMPT = `Você estrutura roteiros de cobertura de eventos (escritos por storymakers/filmmakers em texto livre, sem formato fixo) em dados prontos para um checklist interativo.
 
@@ -238,12 +209,14 @@ Saída estruturada equivalente (um item de "scenes"):
 
 Responda SOMENTE com o JSON estruturado, seguindo o schema fornecido.`;
 
-async function generateWithRetry(ai, params, retries = 2, delayMs = 1000) {
+const CHECKLIST_OUTPUT_FORMAT = zodOutputFormat(CHECKLIST_SCHEMA);
+
+async function generateWithRetry(anthropic, params, retries = 2, delayMs = 1000) {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await ai.models.generateContent(params);
+      return await anthropic.messages.parse(params);
     } catch (err) {
-      const isTransient = err && (err.status === 503 || err.status === 429);
+      const isTransient = err instanceof Anthropic.RateLimitError || (err instanceof Anthropic.APIError && err.status >= 500);
       if (!isTransient || attempt >= retries) throw err;
       await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)));
     }
@@ -257,44 +230,33 @@ app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Cole um roteiro com mais conteúdo antes de gerar.' });
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({
-      error: 'GEMINI_API_KEY não configurada no servidor. Copie .env.example para .env e adicione sua chave (grátis em aistudio.google.com/apikey).'
+      error: 'ANTHROPIC_API_KEY não configurada no servidor. Copie .env.example para .env e adicione sua chave (console.anthropic.com/settings/keys).'
     });
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const response = await generateWithRetry(ai, {
-      model: 'gemini-3.6-flash',
-      contents: text,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        responseMimeType: 'application/json',
-        responseSchema: CHECKLIST_SCHEMA
-      }
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await generateWithRetry(anthropic, {
+      model: 'claude-sonnet-5',
+      max_tokens: 16000,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: text }],
+      output_config: { format: CHECKLIST_OUTPUT_FORMAT }
     });
 
-    const raw = response.text;
-    if (!raw) {
+    if (!response.parsed_output) {
       return res.status(502).json({ error: 'Não consegui estruturar esse texto. Tente reformular ou detalhar mais o roteiro.' });
     }
 
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch (parseErr) {
-      console.error('Resposta do Gemini não era JSON válido:', raw);
-      return res.status(502).json({ error: 'A IA devolveu um formato inesperado. Tente gerar de novo.' });
-    }
-
-    res.json(data);
+    res.json(response.parsed_output);
   } catch (err) {
-    console.error('Erro ao chamar a API do Gemini:', err);
-    if (err && (err.status === 503 || err.status === 429)) {
-      return res.status(503).json({ error: 'O Gemini está sobrecarregado no momento. Tente gerar de novo em alguns segundos.' });
+    console.error('Erro ao chamar a API da Anthropic:', err);
+    if (err instanceof Anthropic.RateLimitError || (err instanceof Anthropic.APIError && err.status >= 500)) {
+      return res.status(503).json({ error: 'A IA está sobrecarregada no momento. Tente gerar de novo em alguns segundos.' });
     }
-    res.status(500).json({ error: 'Erro ao chamar a IA (Gemini). Verifique a GEMINI_API_KEY e a conexão.' });
+    res.status(500).json({ error: 'Erro ao chamar a IA (Anthropic). Verifique a ANTHROPIC_API_KEY e a conexão.' });
   }
 });
 
