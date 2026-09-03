@@ -8,6 +8,27 @@ import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import { OAuth2Client } from 'google-auth-library';
+import * as Sentry from '@sentry/node';
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'production',
+    tracesSampleRate: 0 // só rastreamento de erro, sem tracing de performance
+  });
+}
+
+// console.error continua indo pro log do Render (útil olhando ao vivo); isso
+// só soma o envio pro Sentry (agrupamento, alerta por e-mail, stack trace) —
+// sem SENTRY_DSN configurada, vira só o console.error de sempre.
+function logError(message, err) {
+  console.error(message, err);
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+      extra: { message }
+    });
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -252,7 +273,7 @@ app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
 
     res.json(response.parsed_output);
   } catch (err) {
-    console.error('Erro ao chamar a API da Anthropic:', err);
+    logError('Erro ao chamar a API da Anthropic:', err);
     if (err instanceof Anthropic.RateLimitError || (err instanceof Anthropic.APIError && err.status >= 500)) {
       return res.status(503).json({ error: 'A IA está sobrecarregada no momento. Tente gerar de novo em alguns segundos.' });
     }
@@ -318,12 +339,12 @@ app.get('/api/google/oauth/callback', async (req, res) => {
       access_token_expires_at: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null
     });
     if (error) {
-      console.error('Erro ao salvar conta Google:', error);
+      logError('Erro ao salvar conta Google:', error);
       return res.status(500).send('Erro ao salvar a conexão com o Google Calendar.');
     }
     res.redirect(payload.returnTo + '?google=conectado');
   } catch (err) {
-    console.error('Erro no callback OAuth do Google:', err);
+    logError('Erro no callback OAuth do Google:', err);
     res.status(500).send('Erro ao conectar com o Google. Feche esta aba e tente de novo.');
   }
 });
@@ -399,7 +420,8 @@ async function syncEventToGoogleCalendar(req, eventRow) {
       body: JSON.stringify(body)
     });
     if (!resp.ok) {
-      console.error('Erro ao sincronizar com Google Calendar:', resp.status, await resp.text());
+      const bodyText = await resp.text();
+      logError('Erro ao sincronizar com Google Calendar:', new Error(`Google Calendar API ${resp.status}: ${bodyText}`));
       return;
     }
     const result = await resp.json();
@@ -407,7 +429,7 @@ async function syncEventToGoogleCalendar(req, eventRow) {
       await supabaseAdmin.from('events').update({ google_calendar_event_id: result.id }).eq('id', eventRow.id);
     }
   } catch (err) {
-    console.error('Erro ao sincronizar com Google Calendar:', err);
+    logError('Erro ao sincronizar com Google Calendar:', err);
   }
 }
 
@@ -470,7 +492,7 @@ app.post('/api/google/drive-folders', requireAuth, async (req, res) => {
     const root = await driveCreateFolderTree(accessToken, eventTitle || 'Evento CAPTURA', folders);
     res.json({ folderId: root.id, folderUrl: `https://drive.google.com/drive/folders/${root.id}` });
   } catch (err) {
-    console.error('Erro ao criar estrutura no Drive:', err);
+    logError('Erro ao criar estrutura no Drive:', err);
     const scopeIssue = err.status === 403;
     res.status(500).json({
       error: scopeIssue
@@ -506,7 +528,7 @@ app.post('/api/events', requireAuth, async (req, res) => {
   const db = scopedClient(req.token);
   const { error } = await db.from('events').insert({ id, data: payload, owner_id: req.user.id, drive_folder_id: driveFolderId });
   if (error) {
-    console.error('Erro ao salvar evento:', error);
+    logError('Erro ao salvar evento:', error);
     return res.status(500).json({ error: 'Não consegui salvar o evento. Tente de novo.' });
   }
   res.json({ id });
@@ -531,7 +553,7 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
     .maybeSingle();
 
   if (error) {
-    console.error('Erro ao atualizar evento:', error);
+    logError('Erro ao atualizar evento:', error);
     return res.status(500).json({ error: 'Não consegui salvar as alterações. Tente de novo.' });
   }
   if (!data) {
@@ -552,7 +574,7 @@ app.patch('/api/events/:id/permissions', requireAuth, async (req, res) => {
     .maybeSingle();
 
   if (error) {
-    console.error('Erro ao atualizar permissão:', error);
+    logError('Erro ao atualizar permissão:', error);
     return res.status(500).json({ error: 'Não consegui atualizar a permissão.' });
   }
   if (!data) {
@@ -573,7 +595,7 @@ app.get('/api/events', requireAuth, async (req, res) => {
   ]);
 
   if (ownedError || memberError) {
-    console.error('Erro ao listar eventos:', ownedError || memberError);
+    logError('Erro ao listar eventos:', ownedError || memberError);
     return res.status(500).json({ error: 'Não consegui carregar seu histórico.' });
   }
 
@@ -582,7 +604,7 @@ app.get('/api/events', requireAuth, async (req, res) => {
   if (memberIds.length) {
     const { data, error } = await db.from('events').select('id, data, created_at, allow_member_edit').in('id', memberIds);
     if (error) {
-      console.error('Erro ao listar eventos salvos:', error);
+      logError('Erro ao listar eventos salvos:', error);
       return res.status(500).json({ error: 'Não consegui carregar seu histórico.' });
     }
     memberEvents = data || [];
@@ -615,7 +637,7 @@ app.get('/api/events/:id/save', requireAuth, async (req, res) => {
     .eq('user_id', req.user.id)
     .maybeSingle();
   if (error) {
-    console.error('Erro ao checar evento salvo:', error);
+    logError('Erro ao checar evento salvo:', error);
     return res.status(500).json({ error: 'Não consegui checar.' });
   }
   res.json({ saved: !!data });
@@ -625,7 +647,7 @@ app.post('/api/events/:id/save', requireAuth, async (req, res) => {
   const db = scopedClient(req.token);
   const { error } = await db.from('event_members').insert({ event_id: req.params.id, user_id: req.user.id });
   if (error && error.code !== '23505') {
-    console.error('Erro ao salvar evento:', error);
+    logError('Erro ao salvar evento:', error);
     return res.status(500).json({ error: 'Não consegui salvar esse evento na sua conta.' });
   }
   res.json({ saved: true });
@@ -639,7 +661,7 @@ app.delete('/api/events/:id/save', requireAuth, async (req, res) => {
     .eq('event_id', req.params.id)
     .eq('user_id', req.user.id);
   if (error) {
-    console.error('Erro ao remover evento salvo:', error);
+    logError('Erro ao remover evento salvo:', error);
     return res.status(500).json({ error: 'Não consegui remover esse evento da sua conta.' });
   }
   res.json({ saved: false });
@@ -710,7 +732,7 @@ app.post('/api/events/:id/progress', progressRateLimit, async (req, res) => {
 
   const { error } = await supabase.from('event_progress').insert({ event_id: id, action, payload: payload || {} });
   if (error) {
-    console.error('Erro ao salvar progresso:', error);
+    logError('Erro ao salvar progresso:', error);
     return res.status(500).json({ error: 'Não consegui salvar o progresso.' });
   }
 
@@ -749,6 +771,13 @@ app.get('/e/:id/editar', (req, res) => {
 app.get('/historico', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+// Rede de segurança pra erro que escapou de todo try/catch das rotas acima
+// (as rotas já tratam seus próprios erros e nunca chegam a chamar next(err),
+// então isso raramente dispara — quem cobre o dia a dia é o logError).
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

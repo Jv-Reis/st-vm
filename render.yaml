@@ -22,3 +22,5 @@ services:
         sync: false
       - key: OAUTH_STATE_SECRET
         sync: false
+      - key: SENTRY_DSN
+        sync: false

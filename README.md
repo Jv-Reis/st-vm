@@ -127,6 +127,10 @@ Feita uma revisão manual do projeto inteiro (RLS de cada tabela conferida ao vi
 - Tokens do Google, `SUPABASE_SERVICE_ROLE_KEY` e as chaves de criptografia/assinatura nunca chegam ao navegador nem ao Git (`.env` sempre ignorado, conferido no histórico inteiro do repositório).
 - **IDOR corrigido (achado por pentest automatizado, 2026-08-29):** a tabela `events` tinha policy de SELECT e UPDATE liberada pra `anon` — como a `SUPABASE_ANON_KEY` é pública por natureza (enviada ao navegador via `/api/config` pro SDK de login), qualquer um podia usá-la direto contra o PostgREST do Supabase (fora do servidor) pra ler a tabela `events` inteira, de todo mundo, e sobrescrever qualquer evento sem estar logado. As policies agora exigem `authenticated` (dono ou membro autorizado); a rota pública `GET /api/events/:id` passou a ler com a `SUPABASE_SERVICE_ROLE_KEY` no servidor, então continua funcionando sem exigir login de quem só recebeu o link, mas sem depender de RLS aberta pra isso. SQL da correção em `supabase-fix-events-rls.sql`.
 
+## Observabilidade (opcional)
+
+Configurando `SENTRY_DSN` (projeto grátis em [sentry.io](https://sentry.io)), todo erro que hoje só ia pro `console.error` (falha chamando a Anthropic, erro salvando/lendo evento no Supabase, falha sincronizando com o Google Calendar) passa a também ser reportado no Sentry — agrupado por tipo, com stack trace, e alerta por e-mail quando aparece um erro novo. Sem essa variável configurada, o app funciona exatamente igual, só sem esse envio extra. Não precisa de mudança nenhuma no código pra ativar, só a variável de ambiente.
+
 ## Google Calendar + Drive via OAuth (opcional)
 
 Sem configurar nada, o botão "📅 Google Calendar" (link simples) continua funcionando normalmente. A parte de **"🔗 Conectar Google (Calendar + Drive)"** (sincronização automática do Calendar, que edita em vez de duplicar, + criação de estrutura de pastas no Drive) só liga depois de configurar um projeto no Google Cloud — segue o mesmo espírito do SMTP do Gmail: precisa da sua conta Google, ninguém faz isso por você. É **uma conexão só** cobrindo as duas coisas — não precisa conectar duas vezes.
