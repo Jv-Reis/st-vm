@@ -24,9 +24,12 @@ if (process.env.SENTRY_DSN) {
 function logError(message, err) {
   console.error(message, err);
   if (process.env.SENTRY_DSN) {
-    Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
-      extra: { message }
-    });
+    // erros do Supabase (e outros libs) não são instância de Error — são um
+    // objeto com .message/.code/.details. String(err) neles vira "[object
+    // Object]", perdendo a informação; por isso o fallback usa err.message
+    // quando existe, e guarda o objeto original inteiro como contexto extra.
+    const wrapped = err instanceof Error ? err : new Error((err && err.message) || String(err));
+    Sentry.captureException(wrapped, { extra: { message, original: err } });
   }
 }
 
