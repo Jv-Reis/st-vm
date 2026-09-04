@@ -751,15 +751,138 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     currentEventLocation = '';
   }
 
+  // ---------- fila offline de progresso (IndexedDB) ----------
+  // Sem isso, uma ação feita sem sinal (comum em campo) era perdida de vez —
+  // o fetch falhava e o .catch(()=>{}) engolia o erro. Agora toda ação primeiro
+  // entra numa fila local e só sai dela quando o servidor confirma o salvamento.
+
+  const OFFLINE_DB_NAME = 'captura-offline';
+  const OFFLINE_STORE = 'progress_queue';
+
+  function openOfflineDB(){
+    return new Promise((resolve, reject) => {
+      if(!('indexedDB' in window)){ reject(new Error('IndexedDB indisponível')); return; }
+      const req = indexedDB.open(OFFLINE_DB_NAME, 1);
+      req.onupgradeneeded = function(){
+        const db = req.result;
+        if(!db.objectStoreNames.contains(OFFLINE_STORE)){
+          db.createObjectStore(OFFLINE_STORE, { keyPath: 'id', autoIncrement: true });
+        }
+      };
+      req.onsuccess = function(){ resolve(req.result); };
+      req.onerror = function(){ reject(req.error); };
+    });
+  }
+
+  async function enqueueProgress(eventId, action, payload){
+    try {
+      const db = await openOfflineDB();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(OFFLINE_STORE, 'readwrite');
+        tx.objectStore(OFFLINE_STORE).add({ eventId, action, payload, ts: Date.now() });
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    } catch(err){
+      // sem IndexedDB (aba anônima antiga, navegador incomum): mantém o comportamento
+      // anterior como último recurso, tentando mandar direto sem fila.
+      fetch('/api/events/' + eventId + '/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, payload })
+      }).catch(function(){});
+    }
+  }
+
+  async function readOfflineQueue(){
+    try {
+      const db = await openOfflineDB();
+      const items = await new Promise((resolve, reject) => {
+        const tx = db.transaction(OFFLINE_STORE, 'readonly');
+        const req = tx.objectStore(OFFLINE_STORE).getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      db.close();
+      return items;
+    } catch(err){
+      return [];
+    }
+  }
+
+  async function removeFromOfflineQueue(id){
+    try {
+      const db = await openOfflineDB();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(OFFLINE_STORE, 'readwrite');
+        tx.objectStore(OFFLINE_STORE).delete(id);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    } catch(err){}
+  }
+
+  let flushingOfflineQueue = false;
+
+  async function flushProgressQueue(){
+    if(flushingOfflineQueue) return;
+    flushingOfflineQueue = true;
+    try {
+      const items = (await readOfflineQueue()).sort((a, b) => a.id - b.id);
+      for(const item of items){
+        try {
+          const resp = await fetch('/api/events/' + item.eventId + '/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: item.action, payload: item.payload })
+          });
+          if(!resp.ok) throw new Error('resposta não-ok');
+          await removeFromOfflineQueue(item.id);
+        } catch(err){
+          // sem conexão (ou erro do servidor): para por aqui e tenta de novo depois,
+          // pra não mandar as ações seguintes fora da ordem original
+          break;
+        }
+      }
+    } finally {
+      flushingOfflineQueue = false;
+      updateSyncStatus();
+    }
+  }
+
+  async function updateSyncStatus(){
+    const el = document.getElementById('syncStatus');
+    const textEl = document.getElementById('syncStatusText');
+    if(!el) return;
+    const count = (await readOfflineQueue()).length;
+    if(count === 0){
+      el.hidden = true;
+      el.classList.remove('sync-status--offline');
+      return;
+    }
+    el.hidden = false;
+    const offline = !navigator.onLine;
+    el.classList.toggle('sync-status--offline', offline);
+    textEl.textContent = offline
+      ? (count + (count === 1 ? ' ação sem conexão' : ' ações sem conexão'))
+      : ('sincronizando ' + count + '…');
+  }
+
+  window.addEventListener('online', function(){ updateSyncStatus(); flushProgressQueue(); });
+  window.addEventListener('offline', function(){ updateSyncStatus(); });
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) flushProgressQueue(); });
+  setInterval(flushProgressQueue, 30000);
+
   // ---------- progresso em tempo real ----------
 
   function sendProgress(action, payload){
     if(!currentEventId) return;
-    fetch('/api/events/' + currentEventId + '/progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, payload })
-    }).catch(function(){});
+    enqueueProgress(currentEventId, action, payload).then(function(){
+      updateSyncStatus();
+      flushProgressQueue();
+    });
   }
 
   function connectProgressStream(id){
@@ -1464,4 +1587,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   initAuth();
+  updateSyncStatus();
+  flushProgressQueue();
 })();
