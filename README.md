@@ -2,7 +2,7 @@
 
 Cole o roteiro de cobertura de um evento (texto livre, sem formato fixo) e o site gera automaticamente um checklist interativo de captação, dividido em fases e cenas — com uma etapa de revisão editável antes de publicar, e um link compartilhável pra equipe.
 
-O progresso de "gravado" é sincronizado em tempo real entre todos os dispositivos que estão vendo o mesmo evento. Publicar exige login (magic link, sem senha) — só quem cria/edita evento precisa de conta; a equipe que só abre o link em campo continua sem login. Dá pra ver o histórico de eventos publicados, editar um evento sem trocar o link, e exportar um relatório de cobertura (imprimir / salvar como PDF) a qualquer momento.
+O progresso de "gravado" é sincronizado em tempo real entre todos os dispositivos que estão vendo o mesmo evento. Gerar um checklist (e publicar) exige login (magic link por email, ou "Entrar com Google") — só quem cria/edita evento precisa de conta; a equipe que só abre o link em campo continua sem login. Dá pra ver o histórico de eventos publicados, editar um evento sem trocar o link, e exportar um relatório de cobertura (imprimir / salvar como PDF) a qualquer momento.
 
 Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em checklist — diferente do Gemini que era usado antes, a Anthropic não tem um plano perpétuo grátis, precisa de créditos pré-pagos em [console.anthropic.com](https://console.anthropic.com/settings/billing), mas o custo por roteiro processado é baixo. O banco é **Supabase (Postgres)**, no plano gratuito ($0/mês) — os eventos publicados persistem de verdade, sobrevivem a restart/redeploy do servidor.
 
@@ -29,7 +29,7 @@ Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em 
 
 1. Escreva o roteiro do jeito que quiser — em qualquer editor (Google Docs, Notion, bloco de notas, ChatGPT, o que for) — e copie o texto todo.
 2. Cole na caixa de texto da tela inicial. (Ou clique em "Usar roteiro de exemplo" pra testar sem ter um roteiro em mãos.)
-3. Clique em "Gerar checklist". A IA organiza o texto em fases, cenas, o que capturar, fala sugerida e regras de pode/não pode.
+3. Clique em "Gerar checklist" — se não estiver logado, pede login primeiro (o texto colado fica salvo e a geração continua sozinha assim que você entrar). A IA organiza o texto em fases, cenas, o que capturar, fala sugerida e regras de pode/não pode.
 4. **Revise na prévia**: ajuste título, textos, ícones e formato de qualquer campo; reordene ou remova cenas e fases (setas ↑/↓ e ✕); adicione cena/fase/categoria de missão manualmente; reatribua uma cena pra outra fase pelo seletor "Fase". Preencher **início, término e local** (todos opcionais) libera o botão de Google Calendar depois de publicar — sem o término preenchido, ou se o término for antes do início, o evento é criado com 4h de duração por padrão (um aviso aparece na prévia se o término preenchido for inválido). Tem também um campo de **"Estrutura de pastas pro Google Drive"**, pré-preenchido com o nome das fases — edite como quiser e clique em "📁 Criar estrutura no Google Drive" (exige ter conectado sua conta do Google, veja a seção própria) pra criar de verdade uma pasta com o nome do evento e as subpastas listadas, na sua conta do Drive. Use `/` numa linha pra aninhar (ex: `Final/Fotos finais` cria "Fotos finais" dentro de "Final") — pastas repetidas em mais de uma linha não duplicam, só reaproveitam a mesma.
 5. Clique em **"Publicar checklist"** — o evento é salvo no banco e você recebe um link (`/e/algumId`) mostrado no topo da página. Copie e mande pra equipe.
 6. Use a checklist em campo: marque cada cena como **Não iniciado / Em andamento / Feito**, acompanhe o progresso geral e por fase (só "Feito" conta pro percentual), e marque as "missões" (momentos soltos sem ordem fixa) quando flagrar. Cada mudança de status guarda o próprio horário (ex: "Iniciado 14:02 · Concluído 14:15") — útil pra cruzar com o horário dos arquivos na galeria depois. A tela rola livremente (o topo não fica fixo), pra não ocupar espaço da tela em celular.
@@ -40,8 +40,8 @@ Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em 
 
 ## Login, histórico e edição
 
-- Clique em **"Entrar"** (canto superior direito) e digite seu email — chega um link de acesso, sem senha.
-- Publicar um roteiro agora exige login (o rascunho fica salvo esperando você entrar, se tentar publicar deslogado).
+- Clique em **"Entrar"** (canto superior direito) — escolha **"Entrar com Google"** (imediato) ou digite seu email pra receber um link de acesso, sem senha.
+- Gerar um checklist e publicar um roteiro exigem login (o texto/rascunho fica salvo esperando você entrar, se tentar sem estar logado).
 - **"Meus eventos"** (`/historico`) lista tudo que você já publicou, com link pra ver ou editar cada um.
 - Editar um evento **atualiza o mesmo link** (`/e/:id`) — a equipe que já tem o link não precisa trocar nada.
 - Eventos publicados antes dessa mudança continuam funcionando normalmente pra quem só usa o link (ver, marcar "Gravar"), mas não aparecem no histórico de ninguém nem podem ser editados (não têm dono).
@@ -53,7 +53,6 @@ Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em 
 
 ## O que NÃO tem ainda
 
-- Login de terceiros (Google, etc.) — só magic link por email.
 - Id estável nos itens de missão (só nas cenas) — reordenar/editar itens de missão num evento com progresso já gravado pode desalinhar o que estava marcado. Baixo risco na prática (missões não têm reorder na prévia hoje).
 - Limpeza do log `event_progress` — cresce sem limite, ainda não é problema na escala atual de uso.
 - Editar a estrutura de pastas do Drive depois de criada (adicionar/remover subpasta num evento já publicado) — v1 só cria uma vez; ajustes depois disso são manuais, direto no Drive.
@@ -123,7 +122,8 @@ public/privacidade.html política de privacidade (exigida pela tela de consentim
 ## Segurança
 
 Feita uma revisão manual do projeto inteiro (RLS de cada tabela conferida ao vivo no banco, escaping de HTML em todo lugar que renderiza texto do usuário, histórico do Git checado por segredo vazado, `npm audit`). Achados e correções:
-- **Limitador de requisições** por IP em `/api/parse-roteiro` (10/15min, protege o gasto na API da Anthropic) e em `/api/events/:id/progress` (120/min — mais generoso porque é uso legítimo normal de uma equipe inteira marcando progresso ao vivo, mas evita inundar a tabela de progresso, que é pública e sem login de propósito).
+- **`/api/parse-roteiro` exige login e tem dois limitadores em camada**: por IP (10/15min, contra abuso vindo de fora) e por conta (3/15min — o "uso justo" de quem já está logado, enquanto não existe plano pago). Antes do login com Google ser aberto pro público, gerar checklist era anônimo; abrir cadastro sem exigir conta ali teria virado gasto ilimitado na API da Anthropic pra qualquer visitante.
+- **`/api/events/:id/progress`** tem seu próprio limitador (120/min — mais generoso porque é uso legítimo normal de uma equipe inteira marcando progresso ao vivo, mas evita inundar a tabela de progresso, que é pública e sem login de propósito).
 - `trust proxy` ajustado de `true` pra `1` — confia só no proxy do próprio Render, não deixa o cliente forjar o IP que os limitadores acima enxergam.
 - Cabeçalhos básicos de segurança em toda resposta: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
 - Tokens do Google, `SUPABASE_SERVICE_ROLE_KEY` e as chaves de criptografia/assinatura nunca chegam ao navegador nem ao Git (`.env` sempre ignorado, conferido no histórico inteiro do repositório).
@@ -132,6 +132,20 @@ Feita uma revisão manual do projeto inteiro (RLS de cada tabela conferida ao vi
 ## Observabilidade (opcional)
 
 Configurando `SENTRY_DSN` (projeto grátis em [sentry.io](https://sentry.io)), todo erro que hoje só ia pro `console.error` (falha chamando a Anthropic, erro salvando/lendo evento no Supabase, falha sincronizando com o Google Calendar) passa a também ser reportado no Sentry — agrupado por tipo, com stack trace, e alerta por e-mail quando aparece um erro novo. Sem essa variável configurada, o app funciona exatamente igual, só sem esse envio extra. Não precisa de mudança nenhuma no código pra ativar, só a variável de ambiente.
+
+## Login com Google (opcional)
+
+Além do magic link, dá pra entrar direto com a conta Google — botão "Entrar com Google" na tela de login. Isso é login puro, resolvido inteiramente pelo **provedor Google do Supabase Auth** — não tem relação nenhuma com a integração de Calendar/Drive descrita na seção seguinte. São **dois clientes OAuth em dois projetos separados** do Google Cloud, de propósito: login só pede escopo de email/perfil (não-sensível, publica sem revisão do Google), enquanto Calendar/Drive pede acesso à agenda/Drive (escopo sensível, exigiria uma verificação de marca bem mais pesada se estivesse no mesmo projeto).
+
+**Configuração (feita direto no Google Cloud + Supabase Dashboard, nenhuma variável de ambiente no `.env`/Render):**
+1. Crie um projeto no Google Cloud **dedicado só a isso** — não reaproveite o projeto do Calendar/Drive.
+2. Em Authentication → Sign In / Providers → Google no Supabase, copie a **Callback URL** exibida ali (formato `https://<seu-projeto>.supabase.co/auth/v1/callback`) — é essa URL, e não a do próprio CAPTURA, que vai no Google Cloud (quem processa a troca do código OAuth é o Supabase, não o nosso servidor).
+3. No Google Cloud, em "Público-alvo" (tela de consentimento): tipo Externo. Preencha nome do app, email de suporte, **Domínios autorizados** (`captura-checklist.onrender.com`), **Página inicial** e **Política de Privacidade** (`/privacidade.html`, já existe no projeto) — **sem logo**, pra não cair na verificação de marca (que exige provar posse do domínio via Google Search Console e pode demorar dias).
+4. Em "Clientes" → criar cliente OAuth, tipo Aplicativo da Web, colando a Callback URL do passo 2 em "URIs de redirecionamento autorizados".
+5. Em "Público-alvo" → "Publicar app", pra qualquer conta Google poder entrar (não só emails pré-aprovados como testador).
+6. Cole o Client ID e o Client Secret gerados em Supabase → Authentication → Sign In / Providers → Google, habilite o toggle e salve.
+
+Contas que já existiam por magic link são automaticamente ligadas à mesma conta ao entrar com Google pelo mesmo email (mesmo `user_id`, sem duplicar usuário nem perder eventos) — confirmado testando em produção.
 
 ## Google Calendar + Drive via OAuth (opcional)
 

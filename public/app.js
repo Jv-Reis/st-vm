@@ -93,6 +93,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let sb = null;
   let currentUser = null;
   const PENDING_DRAFT_KEY = 'captura_pending_draft';
+  const PENDING_ROTEIRO_KEY = 'captura_pending_roteiro';
   const HERO_DISMISSED_KEY = 'captura_hero_dismissed';
   const HISTORY_VIEW_KEY = 'captura_history_view';
   let historyViewMode = localStorage.getItem(HISTORY_VIEW_KEY) || 'list';
@@ -136,21 +137,17 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     loadPreview({ event_title: '', phases: [], scenes: [], missions: [] });
   });
 
-  generateBtn.addEventListener('click', async function(){
-    const text = roteiroInput.value.trim();
+  async function runGenerate(text){
     importError.hidden = true;
-    if(text.length < 20){
-      importError.textContent = 'Cole um roteiro com mais conteúdo antes de gerar.';
-      importError.hidden = false;
-      return;
-    }
     generateBtn.disabled = true;
     exampleBtn.disabled = true;
     generateBtn.textContent = 'Gerando…';
     try {
+      const token = await accessToken();
+      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
       const resp = await fetch('/api/parse-roteiro', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify({ text })
       });
       const data = await resp.json();
@@ -166,6 +163,24 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       exampleBtn.disabled = false;
       generateBtn.textContent = 'Gerar checklist';
     }
+  }
+
+  generateBtn.addEventListener('click', async function(){
+    const text = roteiroInput.value.trim();
+    importError.hidden = true;
+    if(text.length < 20){
+      importError.textContent = 'Cole um roteiro com mais conteúdo antes de gerar.';
+      importError.hidden = false;
+      return;
+    }
+    if(!currentUser){
+      localStorage.setItem(PENDING_ROTEIRO_KEY, text);
+      showView('login');
+      loginStatus.textContent = 'Faça login pra gerar o checklist — seu roteiro fica salvo e a geração continua assim que você entrar.';
+      loginStatus.hidden = false;
+      return;
+    }
+    await runGenerate(text);
   });
 
   // ---------- preview / edit ----------
@@ -1582,6 +1597,17 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     return data.session ? data.session.access_token : null;
   }
 
+  function restorePendingRoteiroIfAny(){
+    if(window.location.pathname !== '/') return false;
+    const pending = localStorage.getItem(PENDING_ROTEIRO_KEY);
+    if(!currentUser || !pending) return false;
+    localStorage.removeItem(PENDING_ROTEIRO_KEY);
+    showView('import');
+    roteiroInput.value = pending;
+    runGenerate(pending);
+    return true;
+  }
+
   function restorePendingDraftIfAny(){
     if(window.location.pathname !== '/') return false;
     const pending = localStorage.getItem(PENDING_DRAFT_KEY);
@@ -1659,6 +1685,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   // ---------- roteamento ----------
 
   function route(){
+    if(restorePendingRoteiroIfAny()) return;
     if(restorePendingDraftIfAny()) return;
     const path = window.location.pathname;
     let m;
@@ -1679,7 +1706,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     sb.auth.onAuthStateChange(function(_evt, session){
       currentUser = session?.user || null;
       updateAuthUI();
-      restorePendingDraftIfAny();
+      if(!restorePendingRoteiroIfAny()) restorePendingDraftIfAny();
     });
     route();
   }

@@ -50,22 +50,25 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rate limit simples em memória (1 instância, sem Redis) — protege rotas
-// públicas (sem login) de abuso. Cada rota usa sua própria instância porque
-// os limites fazem sentido em escalas bem diferentes (gerar roteiro custa
-// cota da IA; marcar progresso é barato mas pode ser chamado com muito mais
-// frequência num uso legítimo, com vários membros da equipe no mesmo evento).
-function makeRateLimiter(windowMs, max, message) {
-  const hits = new Map(); // ip -> timestamps[]
+// Rate limit simples em memória (1 instância, sem Redis) — protege rotas de
+// abuso. Cada rota usa sua própria instância porque os limites fazem sentido
+// em escalas bem diferentes (gerar roteiro custa cota da IA; marcar progresso
+// é barato mas pode ser chamado com muito mais frequência num uso legítimo,
+// com vários membros da equipe no mesmo evento). `keyFn` deixa escolher se o
+// limite é por IP (padrão, rotas sem login) ou por conta (rotas autenticadas
+// — precisa rodar depois do `requireAuth` pra `req.user` já existir).
+function makeRateLimiter(windowMs, max, message, keyFn) {
+  const hits = new Map(); // chave (ip ou user id) -> timestamps[]
+  const getKey = keyFn || ((req) => req.ip || 'unknown');
   return function rateLimit(req, res, next) {
-    const ip = req.ip || 'unknown';
+    const key = getKey(req);
     const now = Date.now();
-    const recent = (hits.get(ip) || []).filter(t => now - t < windowMs);
+    const recent = (hits.get(key) || []).filter(t => now - t < windowMs);
     if (recent.length >= max) {
       return res.status(429).json({ error: message });
     }
     recent.push(now);
-    hits.set(ip, recent);
+    hits.set(key, recent);
     next();
   };
 }
@@ -73,6 +76,14 @@ function makeRateLimiter(windowMs, max, message) {
 const rateLimit = makeRateLimiter(
   15 * 60 * 1000, 10,
   'Muitas gerações em pouco tempo. Espere alguns minutos e tente de novo.'
+);
+// limite por conta, mais apertado que o de IP acima — a IP protege contra
+// abuso vindo de fora; esse aqui é o "uso justo" de quem já está logado,
+// enquanto não existe um plano pago pra abrir mais que isso.
+const generateRateLimit = makeRateLimiter(
+  15 * 60 * 1000, 3,
+  'Você já gerou 3 roteiros nos últimos 15 minutos. Espere um pouco e tente de novo.',
+  (req) => req.user.id
 );
 const progressRateLimit = makeRateLimiter(
   60 * 1000, 120,
@@ -249,7 +260,7 @@ async function generateWithRetry(anthropic, params, retries = 2, delayMs = 1000)
   }
 }
 
-app.post('/api/parse-roteiro', rateLimit, async (req, res) => {
+app.post('/api/parse-roteiro', rateLimit, requireAuth, generateRateLimit, async (req, res) => {
   const { text } = req.body || {};
 
   if (!text || typeof text !== 'string' || text.trim().length < 20) {
