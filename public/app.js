@@ -54,6 +54,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const membersList = document.getElementById('membersList');
   const membersBackBtn = document.getElementById('membersBackBtn');
   const googleCalendarConnectBtn = document.getElementById('googleCalendarConnectBtn');
+  const googleTestingNote = document.getElementById('googleTestingNote');
   const reportView = document.getElementById('reportView');
   const reportContent = document.getElementById('reportContent');
   const previewEventDate = document.getElementById('previewEventDate');
@@ -811,11 +812,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   async function refreshGoogleCalendarButton(){
     if(!currentUser){
       googleCalendarConnectBtn.hidden = true;
+      googleTestingNote.hidden = true;
       return;
     }
     try {
       const token = await accessToken();
-      if(!token){ googleCalendarConnectBtn.hidden = true; return; }
+      if(!token){ googleCalendarConnectBtn.hidden = true; googleTestingNote.hidden = true; return; }
       const resp = await fetch('/api/google/status', { headers: { Authorization: 'Bearer ' + token } });
       const result = await resp.json();
       if(!resp.ok) throw new Error();
@@ -824,8 +826,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       googleCalendarConnectBtn.textContent = googleCalendarConnected
         ? '📅 Google conectado (desconectar)'
         : '🔗 Conectar Google (Calendar + Drive)';
+      // só mostra o aviso de "peça acesso" pra quem ainda não conectou —
+      // depois de conectado, já deu certo, não faz sentido continuar avisando
+      googleTestingNote.hidden = googleCalendarConnected;
     } catch(err){
       googleCalendarConnectBtn.hidden = true;
+      googleTestingNote.hidden = true;
     }
   }
 

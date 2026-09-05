@@ -151,6 +151,8 @@ Contas que já existiam por magic link são automaticamente ligadas à mesma con
 
 Sem configurar nada, o botão "📅 Google Calendar" (link simples) continua funcionando normalmente. A parte de **"🔗 Conectar Google (Calendar + Drive)"** (sincronização automática do Calendar, que edita em vez de duplicar, + criação de estrutura de pastas no Drive) só liga depois de configurar um projeto no Google Cloud — segue o mesmo espírito do SMTP do Gmail: precisa da sua conta Google, ninguém faz isso por você. É **uma conexão só** cobrindo as duas coisas — não precisa conectar duas vezes.
 
+Como esse projeto do Google Cloud continua em modo **Testing** (a verificação de marca pra publicar esbarrou numa limitação do domínio compartilhado do Render — ver nota mais abaixo), só quem estiver na lista de **usuários de teste** consegue conectar. Em "Meus eventos", quem ainda não conectou vê um aviso amarelo pedindo pra solicitar acesso a quem administra o projeto (`jreis1112@gmail.com` hoje) antes de tentar — sem isso, o Google recusa com uma tela de erro.
+
 **1. Criar as credenciais no Google Cloud**
 - Acesse [console.cloud.google.com](https://console.cloud.google.com/), crie (ou reaproveite) um projeto, e ative a **Google Calendar API** e a **Google Drive API** (menu "APIs e serviços" → "Biblioteca", uma de cada vez).
 - Em "Tela de permissão OAuth": tipo **Externo**, deixe em modo **"Testing"** e adicione os emails da equipe como **testadores** — evita o processo de revisão do Google (só é obrigatório pra apps públicos com muita gente).
