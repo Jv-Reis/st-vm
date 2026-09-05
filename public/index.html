@@ -207,6 +207,23 @@
   <div id="reportContent" class="report-content"></div>
 </div>
 
+<!-- ---------- MEMBERS VIEW ---------- -->
+<div id="membersView" hidden>
+  <div class="preview-topbar">
+    <div class="preview-topbar-inner">
+      <div>
+        <span class="preview-eyebrow">Captura · equipe</span>
+        <div class="preview-heading">Quem pode editar este evento</div>
+      </div>
+      <button class="btn" id="membersBackBtn" type="button">← Voltar</button>
+    </div>
+  </div>
+  <div class="preview-view">
+    <p class="import-sub" style="margin-top:0;">Só quem salvou este evento aparece aqui. "Editor" pode alterar fases, cenas e missões — marcar progresso continua liberado pra qualquer um com o link, sem precisar disso.</p>
+    <div id="membersList"></div>
+  </div>
+</div>
+
 <!-- ---------- APP VIEW ---------- -->
 <div id="appView" hidden>
   <header class="topbar">
@@ -236,6 +253,7 @@
           <a class="reset-btn" id="editEventLink" href="#" hidden>✎ Editar evento</a>
           <button class="reset-btn" id="saveEventBtn" type="button" hidden>💾 Salvar nos meus eventos</button>
           <button class="reset-btn" id="allowMemberEditBtn" type="button" hidden>🔒 Só você edita</button>
+          <button class="reset-btn" id="manageMembersBtn" type="button" hidden>👥 Gerenciar equipe</button>
           <button class="reset-btn" id="exportReportBtn" type="button">📄 Relatório</button>
           <button class="reset-btn" id="newRoteiroBtn" type="button">← Novo roteiro</button>
           <button class="reset-btn" id="resetBtn" type="button">↺ Reiniciar checklist</button>

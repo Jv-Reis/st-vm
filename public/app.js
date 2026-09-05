@@ -48,6 +48,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const editEventLink = document.getElementById('editEventLink');
   const saveEventBtn = document.getElementById('saveEventBtn');
   const allowMemberEditBtn = document.getElementById('allowMemberEditBtn');
+  const manageMembersBtn = document.getElementById('manageMembersBtn');
+  const membersView = document.getElementById('membersView');
+  const membersList = document.getElementById('membersList');
+  const membersBackBtn = document.getElementById('membersBackBtn');
   const googleCalendarConnectBtn = document.getElementById('googleCalendarConnectBtn');
   const reportView = document.getElementById('reportView');
   const reportContent = document.getElementById('reportContent');
@@ -59,7 +63,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const driveFolderAction = document.getElementById('driveFolderAction');
   const calendarLinkBtn = document.getElementById('calendarLinkBtn');
 
-  const VIEWS = { loading: loadingView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView };
+  const VIEWS = { loading: loadingView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView, members: membersView };
   function showView(name){
     Object.keys(VIEWS).forEach(key => { VIEWS[key].hidden = key !== name; });
     authStrip.hidden = (name === 'report' || name === 'loading');
@@ -79,6 +83,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let currentEventLocation = '';
   let currentOwnerId = null;
   let currentAllowMemberEdit = false;
+  let currentMemberCanEdit = false;
   let editingEventId = null;
   let eventSaved = false;
   let progressStream = null;
@@ -598,6 +603,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     updateEditLinkVisibility();
     refreshSaveButton();
     refreshAllowMemberEditButton();
+    refreshManageMembersButton();
 
     const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventEndDate, currentEventLocation, link);
     if(calUrl){
@@ -613,7 +619,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   function updateEditLinkVisibility(){
-    if(currentEventId && currentUser && (isOwner() || (eventSaved && currentAllowMemberEdit))){
+    if(currentEventId && currentUser && (isOwner() || (eventSaved && currentMemberCanEdit))){
       editEventLink.href = '/e/' + currentEventId + '/editar';
       editEventLink.hidden = false;
     } else {
@@ -621,8 +627,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
-  function setSaveButtonState(saved){
+  function setSaveButtonState(saved, canEdit){
     eventSaved = saved;
+    currentMemberCanEdit = saved && !!canEdit;
     saveEventBtn.textContent = saved ? '✓ Salvo (clique pra remover)' : '💾 Salvar nos meus eventos';
     updateEditLinkVisibility();
   }
@@ -640,7 +647,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       const resp = await fetch('/api/events/' + currentEventId + '/save', { headers: { Authorization: 'Bearer ' + token } });
       const result = await resp.json();
       if(!resp.ok) throw new Error(result.error || 'Erro.');
-      setSaveButtonState(!!result.saved);
+      setSaveButtonState(!!result.saved, result.can_edit);
     } catch(err){
       saveEventBtn.hidden = true;
     }
@@ -655,7 +662,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       const resp = await fetch('/api/events/' + currentEventId + '/save', { method, headers: { Authorization: 'Bearer ' + token } });
       const result = await resp.json();
       if(!resp.ok) throw new Error(result.error || 'Erro ao salvar.');
-      setSaveButtonState(result.saved);
+      setSaveButtonState(result.saved, result.can_edit);
     } catch(err){
       alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
     } finally {
@@ -665,7 +672,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function setAllowMemberEditState(allow){
     currentAllowMemberEdit = allow;
-    allowMemberEditBtn.textContent = allow ? '🔓 Quem salvou também edita' : '🔒 Só você edita';
+    allowMemberEditBtn.textContent = allow ? '🔓 Novos membros já editam' : '🔒 Novos membros só veem';
   }
 
   function refreshAllowMemberEditButton(){
@@ -690,6 +697,75 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
     } finally {
       allowMemberEditBtn.disabled = false;
+    }
+  });
+
+  // ---------- gerenciar equipe (permissão por pessoa) ----------
+
+  function refreshManageMembersButton(){
+    manageMembersBtn.hidden = !(currentEventId && isOwner());
+  }
+
+  function memberRowHTML(member){
+    const date = new Date(member.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' });
+    return (
+      '<div class="history-card">'+
+        '<div>'+
+          '<div class="history-title">'+escapeHTML(member.email || 'Email indisponível')+'</div>'+
+          '<div class="history-meta">salvou em '+date+'</div>'+
+        '</div>'+
+        '<div class="history-actions">'+
+          '<select class="field-select" data-user-id="'+escapeAttr(member.user_id)+'">'+
+            '<option value="viewer"'+(member.can_edit ? '' : ' selected')+'>Visualizador</option>'+
+            '<option value="editor"'+(member.can_edit ? ' selected' : '')+'>Editor</option>'+
+          '</select>'+
+        '</div>'+
+      '</div>'
+    );
+  }
+
+  async function showMembersView(){
+    showView('members');
+    membersList.innerHTML = '<div class="history-empty">Carregando…</div>';
+    try {
+      const token = await accessToken();
+      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+      const resp = await fetch('/api/events/' + currentEventId + '/members', { headers: { Authorization: 'Bearer ' + token } });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error || 'Erro ao carregar a equipe.');
+      const members = result.members || [];
+      membersList.innerHTML = members.length
+        ? members.map(memberRowHTML).join('')
+        : '<div class="history-empty">Ninguém salvou este evento ainda.</div>';
+    } catch(err){
+      membersList.innerHTML = '<div class="history-empty">Não consegui carregar a equipe (' + escapeHTML(err.message || 'erro') + ').</div>';
+    }
+  }
+
+  manageMembersBtn.addEventListener('click', showMembersView);
+  membersBackBtn.addEventListener('click', function(){ showView('app'); });
+
+  membersList.addEventListener('change', async function(e){
+    const select = e.target.closest('select[data-user-id]');
+    if(!select) return;
+    const userId = select.dataset.userId;
+    const canEdit = select.value === 'editor';
+    select.disabled = true;
+    try {
+      const token = await accessToken();
+      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+      const resp = await fetch('/api/events/' + currentEventId + '/members/' + userId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ can_edit: canEdit })
+      });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error || 'Erro ao atualizar.');
+    } catch(err){
+      alert('Não consegui atualizar essa permissão (' + (err.message || 'erro desconhecido') + ').');
+      select.value = canEdit ? 'viewer' : 'editor';
+    } finally {
+      select.disabled = false;
     }
   });
 
@@ -745,7 +821,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     calendarLinkBtn.hidden = true;
     saveEventBtn.hidden = true;
     allowMemberEditBtn.hidden = true;
+    manageMembersBtn.hidden = true;
     eventSaved = false;
+    currentMemberCanEdit = false;
     currentEventDate = '';
     currentEventEndDate = '';
     currentEventLocation = '';
@@ -1494,6 +1572,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     updateEditLinkVisibility();
     refreshSaveButton();
     refreshAllowMemberEditButton();
+    refreshManageMembersButton();
     refreshGoogleCalendarButton();
   }
 

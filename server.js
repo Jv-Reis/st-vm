@@ -83,13 +83,15 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY)
   : null;
 
-// Cliente com a service role — ignora RLS. Usado SÓ pra duas operações internas
-// que não podem passar pelo JWT de um usuário comum: gravar a conta Google
+// Cliente com a service role — ignora RLS. Usado SÓ em operações internas que
+// não podem passar pelo JWT de um usuário comum: gravar a conta Google
 // conectada no callback do OAuth (não tem sessão de usuário nesse request, é
-// um redirect vindo direto do Google) e ler o token da conta do DONO do
+// um redirect vindo direto do Google), ler o token da conta do DONO do
 // evento durante a sincronização, mesmo quando quem salvou foi um editor
-// autorizado (não o dono). Nunca exposto ao cliente (diferente da anon key,
-// que já é enviada via /api/config).
+// autorizado (não o dono), e resolver o email de um membro a partir do
+// user_id (o email mora em auth.users, fora do alcance do client anon/
+// authenticated). Nunca exposto ao cliente (diferente da anon key, que já é
+// enviada via /api/config).
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
   : null;
@@ -586,6 +588,60 @@ app.patch('/api/events/:id/permissions', requireAuth, async (req, res) => {
   res.json({ allow_member_edit: allow });
 });
 
+app.get('/api/events/:id/members', requireAuth, async (req, res) => {
+  const db = scopedClient(req.token);
+  const { data: event, error: eventError } = await db
+    .from('events')
+    .select('owner_id')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (eventError) {
+    logError('Erro ao checar dono do evento:', eventError);
+    return res.status(500).json({ error: 'Não consegui carregar a equipe.' });
+  }
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  if (event.owner_id !== req.user.id) return res.status(403).json({ error: 'Só o dono do evento pode ver a equipe.' });
+
+  const { data: members, error } = await db
+    .from('event_members')
+    .select('user_id, can_edit, created_at')
+    .eq('event_id', req.params.id)
+    .order('created_at', { ascending: true });
+  if (error) {
+    logError('Erro ao listar membros do evento:', error);
+    return res.status(500).json({ error: 'Não consegui carregar a equipe.' });
+  }
+
+  const withEmail = await Promise.all((members || []).map(async (m) => {
+    let email = null;
+    if (supabaseAdmin) {
+      const { data } = await supabaseAdmin.auth.admin.getUserById(m.user_id);
+      email = data?.user?.email || null;
+    }
+    return { user_id: m.user_id, email, can_edit: !!m.can_edit, created_at: m.created_at };
+  }));
+
+  res.json({ members: withEmail });
+});
+
+app.patch('/api/events/:id/members/:userId', requireAuth, async (req, res) => {
+  const canEdit = !!req.body.can_edit;
+  const db = scopedClient(req.token);
+  const { data, error } = await db
+    .from('event_members')
+    .update({ can_edit: canEdit })
+    .eq('event_id', req.params.id)
+    .eq('user_id', req.params.userId)
+    .select('user_id')
+    .maybeSingle();
+  if (error) {
+    logError('Erro ao atualizar permissão do membro:', error);
+    return res.status(500).json({ error: 'Não consegui atualizar a permissão desse membro.' });
+  }
+  if (!data) return res.status(404).json({ error: 'Membro não encontrado ou você não é o dono do evento.' });
+  res.json({ user_id: data.user_id, can_edit: canEdit });
+});
+
 app.get('/api/events', requireAuth, async (req, res) => {
   if (!supabase) {
     return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
@@ -593,8 +649,8 @@ app.get('/api/events', requireAuth, async (req, res) => {
 
   const db = scopedClient(req.token);
   const [{ data: owned, error: ownedError }, { data: memberships, error: memberError }] = await Promise.all([
-    db.from('events').select('id, data, created_at, allow_member_edit').eq('owner_id', req.user.id),
-    db.from('event_members').select('event_id').eq('user_id', req.user.id)
+    db.from('events').select('id, data, created_at').eq('owner_id', req.user.id),
+    db.from('event_members').select('event_id, can_edit').eq('user_id', req.user.id)
   ]);
 
   if (ownedError || memberError) {
@@ -602,10 +658,11 @@ app.get('/api/events', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'Não consegui carregar seu histórico.' });
   }
 
+  const canEditByEventId = new Map((memberships || []).map((m) => [m.event_id, !!m.can_edit]));
   const memberIds = (memberships || []).map((m) => m.event_id).filter((id) => !owned.some((o) => o.id === id));
   let memberEvents = [];
   if (memberIds.length) {
-    const { data, error } = await db.from('events').select('id, data, created_at, allow_member_edit').in('id', memberIds);
+    const { data, error } = await db.from('events').select('id, data, created_at').in('id', memberIds);
     if (error) {
       logError('Erro ao listar eventos salvos:', error);
       return res.status(500).json({ error: 'Não consegui carregar seu histórico.' });
@@ -626,7 +683,7 @@ app.get('/api/events', requireAuth, async (req, res) => {
       event_date: row.data?.event_date || '',
       created_at: row.created_at,
       is_owner: row.is_owner,
-      is_editor: !row.is_owner && !!row.allow_member_edit
+      is_editor: !row.is_owner && !!canEditByEventId.get(row.id)
     }))
   });
 });
@@ -635,7 +692,7 @@ app.get('/api/events/:id/save', requireAuth, async (req, res) => {
   const db = scopedClient(req.token);
   const { data, error } = await db
     .from('event_members')
-    .select('event_id')
+    .select('event_id, can_edit')
     .eq('event_id', req.params.id)
     .eq('user_id', req.user.id)
     .maybeSingle();
@@ -643,7 +700,7 @@ app.get('/api/events/:id/save', requireAuth, async (req, res) => {
     logError('Erro ao checar evento salvo:', error);
     return res.status(500).json({ error: 'Não consegui checar.' });
   }
-  res.json({ saved: !!data });
+  res.json({ saved: !!data, can_edit: !!data?.can_edit });
 });
 
 app.post('/api/events/:id/save', requireAuth, async (req, res) => {
@@ -653,7 +710,13 @@ app.post('/api/events/:id/save', requireAuth, async (req, res) => {
     logError('Erro ao salvar evento:', error);
     return res.status(500).json({ error: 'Não consegui salvar esse evento na sua conta.' });
   }
-  res.json({ saved: true });
+  const { data: membership } = await db
+    .from('event_members')
+    .select('can_edit')
+    .eq('event_id', req.params.id)
+    .eq('user_id', req.user.id)
+    .maybeSingle();
+  res.json({ saved: true, can_edit: !!membership?.can_edit });
 });
 
 app.delete('/api/events/:id/save', requireAuth, async (req, res) => {
