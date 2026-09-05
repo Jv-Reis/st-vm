@@ -465,13 +465,41 @@ async function driveCreateFolder(accessToken, name, parentId) {
   return resp.json();
 }
 
+// Busca uma subpasta já existente com esse nome dentro do pai antes de criar
+// — usado só ao editar uma estrutura já publicada, pra "adicionar pastas
+// novas" nunca duplicar uma que a equipe já está usando (e pode já ter
+// arquivo dentro).
+async function driveFindFolder(accessToken, name, parentId) {
+  const safeName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const q = `name='${safeName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const resp = await fetch('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&fields=files(id,name)', {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  return (data.files && data.files[0]) || null;
+}
+
+async function driveFindOrCreateFolder(accessToken, name, parentId) {
+  const existing = await driveFindFolder(accessToken, name, parentId);
+  if (existing) return existing;
+  return driveCreateFolder(accessToken, name, parentId);
+}
+
 // Cada item de "folders" pode ser um caminho tipo "Final/Fotos finais" —
 // "/" separa níveis de pasta. Um cache por caminho já percorrido evita criar
 // a mesma pasta intermediária duas vezes quando várias linhas compartilham
 // um ancestral (ex: "Final/Fotos finais" e "Final/Vídeos finais" só criam
 // "Final" uma vez).
-async function driveCreateFolderTree(accessToken, rootName, paths) {
-  const root = await driveCreateFolder(accessToken, rootName, null);
+//
+// `existingRootId` diferencia os dois modos: sem ele, cria uma pasta raiz
+// nova (evento publicado pela primeira vez) e todo o resto é garantidamente
+// novo, sem custo extra de checar duplicata. Com ele (edição de uma
+// estrutura já criada), a raiz já existe e cada nível usa find-or-create —
+// nomes que já existem são reaproveitados (nunca duplicados, nunca
+// apagados), só o que for realmente novo é criado.
+async function driveCreateFolderTree(accessToken, rootName, paths, existingRootId) {
+  const root = existingRootId ? { id: existingRootId } : await driveCreateFolder(accessToken, rootName, null);
   const idByPath = new Map();
 
   for (const rawPath of paths) {
@@ -484,7 +512,9 @@ async function driveCreateFolderTree(accessToken, rootName, paths) {
         parentId = idByPath.get(currentPath);
         continue;
       }
-      const folder = await driveCreateFolder(accessToken, segment, parentId);
+      const folder = existingRootId
+        ? await driveFindOrCreateFolder(accessToken, segment, parentId)
+        : await driveCreateFolder(accessToken, segment, parentId);
       idByPath.set(currentPath, folder.id);
       parentId = folder.id;
     }
@@ -496,7 +526,7 @@ async function driveCreateFolderTree(accessToken, rootName, paths) {
 // criar pastas no Drive é uma ação explícita — só roda quando a pessoa
 // clica no botão, nunca em segundo plano.
 app.post('/api/google/drive-folders', requireAuth, async (req, res) => {
-  const { eventTitle, folders } = req.body || {};
+  const { eventTitle, folders, existingRootId } = req.body || {};
   if (!Array.isArray(folders) || !folders.length) {
     return res.status(400).json({ error: 'Adicione pelo menos uma pasta.' });
   }
@@ -505,7 +535,7 @@ app.post('/api/google/drive-folders', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Conecte sua conta do Google primeiro (em "Meus eventos").' });
   }
   try {
-    const root = await driveCreateFolderTree(accessToken, eventTitle || 'Evento CAPTURA', folders);
+    const root = await driveCreateFolderTree(accessToken, eventTitle || 'Evento CAPTURA', folders, typeof existingRootId === 'string' ? existingRootId : null);
     res.json({ folderId: root.id, folderUrl: `https://drive.google.com/drive/folders/${root.id}` });
   } catch (err) {
     logError('Erro ao criar estrutura no Drive:', err);

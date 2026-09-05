@@ -55,7 +55,6 @@ Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em 
 
 - Id estável nos itens de missão (só nas cenas) — reordenar/editar itens de missão num evento com progresso já gravado pode desalinhar o que estava marcado. Baixo risco na prática (missões não têm reorder na prévia hoje).
 - Limpeza do log `event_progress` — cresce sem limite, ainda não é problema na escala atual de uso.
-- Editar a estrutura de pastas do Drive depois de criada (adicionar/remover subpasta num evento já publicado) — v1 só cria uma vez; ajustes depois disso são manuais, direto no Drive.
 - Convidar a equipe toda de uma vez como convidados do evento no Google Calendar (a integração OAuth de hoje sincroniza só na agenda do dono conectado) — possível evolução futura da integração OAuth, ainda não feita.
 
 ## Deploy no Render (pra o link funcionar fora da sua rede)
@@ -173,7 +172,7 @@ OAUTH_STATE_SECRET=...
 **3. Usar**
 Com as variáveis configuradas (local no `.env`, produção nas env vars do Render), o botão "🔗 Conectar Google (Calendar + Drive)" aparece em **"Meus eventos"** (é uma configuração da conta, não de um evento específico — conecta uma vez só). Depois de conectado:
 - Publicar/editar qualquer evento seu com data passa a criar/atualizar automaticamente na sua agenda — a mesma edição de antes (que só duplicava) agora atualiza o evento certo.
-- Na prévia de qualquer evento, o campo "Estrutura de pastas pro Google Drive" + botão "📁 Criar estrutura no Google Drive" cria de verdade uma pasta com o nome do evento (e as subpastas listadas) no seu Drive — só a estrutura vazia, o site nunca guarda nem envia foto/arquivo nenhum.
+- Na prévia de qualquer evento, o campo "Estrutura de pastas pro Google Drive" + botão "📁 Criar estrutura no Google Drive" cria de verdade uma pasta com o nome do evento (e as subpastas listadas) no seu Drive — só a estrutura vazia, o site nunca guarda nem envia foto/arquivo nenhum. Depois de criada, editar o evento e mudar essa lista mostra em vez disso "🔄 Adicionar pastas novas ao Drive" — dá pra acrescentar subpasta numa estrutura já publicada a qualquer momento. Só acrescenta: nomes repetidos são reaproveitados (nunca duplicam) e tirar uma linha da lista não apaga a pasta correspondente no Drive, mesmo que ela já tenha arquivo dentro — remover pasta continua sendo manual, direto no Drive.
 
 Quem já tinha conectado só pro Calendar antes dessa atualização precisa **desconectar e conectar de novo** pra liberar o Drive também (a permissão de Drive só é concedida numa conexão nova).
 

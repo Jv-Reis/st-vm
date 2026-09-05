@@ -390,7 +390,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function renderDriveFolderAction(){
     if(draft.drive_folder_id){
-      driveFolderAction.innerHTML = '<a class="btn" href="https://drive.google.com/drive/folders/'+encodeURIComponent(draft.drive_folder_id)+'" target="_blank" rel="noopener">📁 Abrir pasta no Drive</a>';
+      driveFolderAction.innerHTML =
+        '<div class="import-actions" style="margin-top:0;">'+
+          '<a class="btn" href="https://drive.google.com/drive/folders/'+encodeURIComponent(draft.drive_folder_id)+'" target="_blank" rel="noopener">📁 Abrir pasta no Drive</a>'+
+          '<button class="btn" id="updateDriveFolderBtn" type="button">🔄 Adicionar pastas novas ao Drive</button>'+
+        '</div>';
     } else {
       driveFolderAction.innerHTML = '<button class="btn" id="createDriveFolderBtn" type="button">📁 Criar estrutura no Google Drive</button>';
     }
@@ -402,23 +406,30 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       alert('Adicione pelo menos um nome de pasta antes de criar a estrutura.');
       return;
     }
-    const btn = document.getElementById('createDriveFolderBtn');
-    if(btn){ btn.disabled = true; btn.textContent = 'Criando…'; }
+    // com drive_folder_id já existindo, isso só ACRESCENTA pasta nova à
+    // estrutura publicada — nunca remove nem duplica o que já existe, mesmo
+    // que uma linha tenha sido apagada da caixa de texto.
+    const isUpdate = !!draft.drive_folder_id;
+    const btnId = isUpdate ? 'updateDriveFolderBtn' : 'createDriveFolderBtn';
+    const idleLabel = isUpdate ? '🔄 Adicionar pastas novas ao Drive' : '📁 Criar estrutura no Google Drive';
+    const btn = document.getElementById(btnId);
+    if(btn){ btn.disabled = true; btn.textContent = isUpdate ? 'Atualizando…' : 'Criando…'; }
     try {
       const token = await accessToken();
       if(!token) throw new Error('Faça login pra usar essa função.');
       const resp = await fetch('/api/google/drive-folders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ eventTitle: draft.event_title, folders })
+        body: JSON.stringify({ eventTitle: draft.event_title, folders, existingRootId: draft.drive_folder_id || undefined })
       });
       const result = await resp.json();
-      if(!resp.ok) throw new Error(result.error || 'Erro ao criar a estrutura.');
+      if(!resp.ok) throw new Error(result.error || 'Erro ao ' + (isUpdate ? 'atualizar' : 'criar') + ' a estrutura.');
       draft.drive_folder_id = result.folderId;
       renderDriveFolderAction();
+      if(isUpdate) alert('Estrutura atualizada — pastas novas foram criadas no Drive. Nada existente foi removido ou duplicado.');
     } catch(err){
-      alert('Não consegui criar a estrutura (' + (err.message || 'erro desconhecido') + ').');
-      if(btn){ btn.disabled = false; btn.textContent = '📁 Criar estrutura no Google Drive'; }
+      alert('Não consegui ' + (isUpdate ? 'atualizar' : 'criar') + ' a estrutura (' + (err.message || 'erro desconhecido') + ').');
+      if(btn){ btn.disabled = false; btn.textContent = idleLabel; }
     }
   }
 
@@ -1424,7 +1435,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const statusBtn = e.target.closest('.status-btn');
     if(statusBtn){ setSceneStatus(statusBtn.dataset.id, statusBtn.dataset.status); return; }
 
-    if(e.target.closest('#createDriveFolderBtn')){ createDriveFolderStructure(); return; }
+    if(e.target.closest('#createDriveFolderBtn') || e.target.closest('#updateDriveFolderBtn')){ createDriveFolderStructure(); return; }
 
     const chip = e.target.closest('.mission-chip');
     if(chip){ toggleMission(chip.dataset.cat, Number(chip.dataset.idx)); return; }
