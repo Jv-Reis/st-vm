@@ -32,6 +32,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const heroDismissBtn = document.getElementById('heroDismissBtn');
   const previewPhasesContainer = document.getElementById('previewPhasesContainer');
   const previewMissionsContainer = document.getElementById('previewMissionsContainer');
+  const googleLoginBtn = document.getElementById('googleLoginBtn');
   const loginEmailInput = document.getElementById('loginEmailInput');
   const loginSubmitBtn = document.getElementById('loginSubmitBtn');
   const loginBackBtn = document.getElementById('loginBackBtn');
@@ -1605,6 +1606,24 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   authStripLoginBtn.addEventListener('click', function(){ showView('login'); });
 
   loginBackBtn.addEventListener('click', function(){ showView('import'); });
+
+  googleLoginBtn.addEventListener('click', async function(){
+    loginStatus.hidden = true;
+    googleLoginBtn.disabled = true;
+    try {
+      const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + '/' } });
+      if(error){
+        loginStatus.textContent = error.message || 'Erro ao entrar com o Google.';
+        loginStatus.hidden = false;
+        googleLoginBtn.disabled = false;
+      }
+      // sem erro: o navegador já está sendo redirecionado pro Google, não precisa reabilitar o botão
+    } catch(err){
+      loginStatus.textContent = err.message || 'Erro ao entrar com o Google.';
+      loginStatus.hidden = false;
+      googleLoginBtn.disabled = false;
+    }
+  });
 
   loginSubmitBtn.addEventListener('click', async function(){
     const email = loginEmailInput.value.trim();
