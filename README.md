@@ -37,6 +37,7 @@ Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em 
 8. "← Novo roteiro" volta pra tela de importação sem perder o texto colado atual.
 9. **"📄 Relatório"** no topo da checklist gera um resumo (cenas capturadas, horários, missões flagradas) pra imprimir ou salvar como PDF — funciona a qualquer momento, evento completo ou não.
 10. **"📅 Google Calendar"** aparece ao lado do link do evento se a data foi preenchida — abre o Google Calendar já preenchido (título, data, local, link de volta pro checklist na descrição). Cada pessoa que clicar salva uma cópia na própria agenda; não exige login com Google. Além disso, em **"Meus eventos"** você pode **"🔗 Conectar Google Calendar"** (uma vez, é uma configuração da conta) — depois de conectado, todo evento seu com data é criado/atualizado automaticamente na sua agenda a cada publicação/edição (edita o mesmo evento, não duplica). Veja a seção própria mais abaixo.
+11. **"📁 Pasta no Drive"** aparece do lado dos outros, direto na checklist ao vivo (não só na prévia), assim que o evento tem uma estrutura de pastas criada no Drive — abre a pasta num clique, sem precisar entrar em "Editar evento" pra achar o link.
 
 ## Login, histórico e edição
 

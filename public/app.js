@@ -63,6 +63,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const previewDriveFolders = document.getElementById('previewDriveFolders');
   const driveFolderAction = document.getElementById('driveFolderAction');
   const calendarLinkBtn = document.getElementById('calendarLinkBtn');
+  const driveFolderLinkBtn = document.getElementById('driveFolderLinkBtn');
 
   const VIEWS = { loading: loadingView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView, members: membersView };
   function showView(name){
@@ -82,6 +83,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let currentEventDate = '';
   let currentEventEndDate = '';
   let currentEventLocation = '';
+  let currentDriveFolderId = null;
   let currentOwnerId = null;
   let currentAllowMemberEdit = false;
   let currentMemberCanEdit = false;
@@ -481,6 +483,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       }
       const id = wasEditing || result.id;
       if(!wasEditing) currentOwnerId = currentUser.id;
+      currentDriveFolderId = draft.drive_folder_id || null;
       editingEventId = null;
       loadChecklist(draft);
       history.pushState({}, '', '/e/' + id);
@@ -638,6 +641,13 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       calendarLinkBtn.hidden = false;
     } else {
       calendarLinkBtn.hidden = true;
+    }
+
+    if(currentDriveFolderId){
+      driveFolderLinkBtn.href = 'https://drive.google.com/drive/folders/' + encodeURIComponent(currentDriveFolderId);
+      driveFolderLinkBtn.hidden = false;
+    } else {
+      driveFolderLinkBtn.hidden = true;
     }
   }
 
@@ -846,11 +856,13 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function hideEventLink(){
     document.getElementById('eventLinkRow').hidden = true;
     calendarLinkBtn.hidden = true;
+    driveFolderLinkBtn.hidden = true;
     saveEventBtn.hidden = true;
     allowMemberEditBtn.hidden = true;
     manageMembersBtn.hidden = true;
     eventSaved = false;
     currentMemberCanEdit = false;
+    currentDriveFolderId = null;
     currentEventDate = '';
     currentEventEndDate = '';
     currentEventLocation = '';
@@ -1063,6 +1075,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       }
       currentOwnerId = data.owner_id || null;
       currentAllowMemberEdit = !!data.allow_member_edit;
+      currentDriveFolderId = data.drive_folder_id || null;
       loadChecklist(data);
       showEventLink(id);
     } catch(err){
@@ -1084,6 +1097,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       editingEventId = id;
       currentOwnerId = data.owner_id || null;
       currentAllowMemberEdit = !!data.allow_member_edit;
+      currentDriveFolderId = data.drive_folder_id || null;
       renderPreviewAll();
       showView('preview');
       publishBtn.textContent = 'Salvar alterações';
