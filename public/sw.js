@@ -64,7 +64,10 @@ self.addEventListener('fetch', (event) => {
     // navegação de página inteira pra algo em /api/ (ex: o redirect de volta
     // do OAuth do Google pra /api/google/oauth/callback) tem que chegar de
     // verdade no servidor — nunca pode ser respondida com o HTML em cache.
-    if (url.pathname.startsWith('/api/')) return;
+    // Páginas estáticas próprias (ex: /privacidade.html) também não são a
+    // SPA — sem esse filtro, quem já tem o service worker instalado nunca
+    // conseguiria abrir essa página, sempre caindo de volta no app.
+    if (url.pathname.startsWith('/api/') || url.pathname.endsWith('.html') && url.pathname !== '/index.html') return;
     event.respondWith(cacheFirst(new Request('/')));
     return;
   }

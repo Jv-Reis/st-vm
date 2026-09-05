@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Política de Privacidade — CAPTURA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="theme-color" content="#0a0a0b">
+<style>
+  .policy-wrap{max-width:760px; margin:0 auto; padding:48px 24px 80px;}
+  .policy-wrap h1{font-family:var(--font-display); font-size:1.7rem; margin:0 0 6px;}
+  .policy-wrap .policy-updated{color:var(--text-faint); font-family:var(--font-mono); font-size:0.78rem; margin:0 0 32px;}
+  .policy-wrap h2{font-family:var(--font-display); font-size:1.15rem; margin:36px 0 12px; padding-top:12px; border-top:1px solid var(--border);}
+  .policy-wrap p, .policy-wrap li{color:var(--text-muted); font-size:0.92rem; line-height:1.7;}
+  .policy-wrap ul{margin:8px 0; padding-left:22px;}
+  .policy-wrap a{color:var(--amber);}
+  .policy-wrap strong{color:var(--text);}
+  .policy-back{display:inline-block; margin-bottom:24px;}
+</style>
+</head>
+<body>
+<div class="policy-wrap">
+  <a class="btn policy-back" href="/">← Voltar pro CAPTURA</a>
+  <h1>Política de Privacidade do CAPTURA</h1>
+  <p class="policy-updated">Última atualização: 5 de setembro de 2026</p>
+
+  <p>O CAPTURA é uma ferramenta de checklist de cobertura de eventos (casamentos, festas e afins). Esta página explica quais dados coletamos, pra que usamos, e como você pode controlá-los.</p>
+
+  <h2>Quais dados coletamos</h2>
+  <ul>
+    <li><strong>Email</strong> — quando você cria conta (login por link mágico ou por "Entrar com Google"), guardamos seu email pra identificar sua conta.</li>
+    <li><strong>Conteúdo que você cria</strong> — o roteiro que você cola, e o checklist gerado a partir dele (fases, cenas, textos, nome/data/local do evento).</li>
+    <li><strong>Progresso do evento</strong> — quais cenas foram marcadas como "em andamento"/"feito" e quando, pra sincronizar isso ao vivo entre a equipe.</li>
+    <li><strong>Conexão com Google Calendar e Drive (opcional)</strong> — só se você conectar essa integração, guardamos um token de acesso pra criar eventos na sua agenda e pastas no seu Drive em seu nome. Nunca lemos ou acessamos arquivos que o CAPTURA não criou.</li>
+  </ul>
+
+  <h2>Como usamos esses dados</h2>
+  <p>Usamos seus dados só pra fazer o CAPTURA funcionar: gerar e exibir sua checklist, sincronizar progresso entre a equipe em tempo real, e (se você pedir) criar eventos no Calendar e pastas no Drive. Não vendemos, alugamos nem usamos seus dados pra publicidade.</p>
+
+  <h2>Com quem compartilhamos</h2>
+  <ul>
+    <li><strong>Supabase</strong> — hospeda nosso banco de dados e cuida do login.</li>
+    <li><strong>Anthropic (Claude)</strong> — o texto do roteiro que você cola é enviado pra essa IA só na hora de gerar o checklist, pra organizar em fases/cenas.</li>
+    <li><strong>Google</strong> — só se você conectar Calendar/Drive, usamos a API do Google em seu nome, com sua autorização explícita.</li>
+    <li><strong>Sentry</strong> — registra erros técnicos do servidor pra gente conseguir corrigir bugs mais rápido.</li>
+  </ul>
+  <p>Nenhum desses serviços tem permissão pra usar seus dados fora do que é necessário pra rodar o CAPTURA.</p>
+
+  <h2>Segurança e armazenamento</h2>
+  <p>Os dados ficam num banco Postgres (Supabase, região São Paulo). O acesso é controlado por regras de permissão a nível de banco (RLS) — cada evento só pode ser lido/editado por quem é dono ou foi autorizado pelo dono. Tokens de acesso ao Google ficam criptografados (AES-256-GCM) antes de salvar, nunca em texto puro.</p>
+
+  <h2>Seus direitos</h2>
+  <p>Você pode pedir acesso, correção ou exclusão dos seus dados a qualquer momento, entrando em contato pelo email abaixo — conforme a Lei Geral de Proteção de Dados (LGPD). Desconectar sua conta Google (no próprio CAPTURA ou em <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>) revoga nosso acesso à sua agenda/Drive imediatamente.</p>
+
+  <h2>Cookies e armazenamento local</h2>
+  <p>O CAPTURA guarda algumas preferências só no seu navegador (localStorage), como o modo de visualização do histórico, e usa cache local (service worker) pra funcionar offline. Isso não sai do seu aparelho.</p>
+
+  <h2>Mudanças nesta política</h2>
+  <p>Se atualizarmos esta política, a data no topo da página muda. Recomendamos revisitar de vez em quando.</p>
+
+  <h2>Contato</h2>
+  <p>Dúvidas sobre privacidade? Escreva pra <a href="mailto:vitorfubuyi@gmail.com">vitorfubuyi@gmail.com</a>.</p>
+</div>
+</body>
+</html>

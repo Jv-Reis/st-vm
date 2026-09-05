@@ -106,6 +106,7 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 public/manifest.json   manifesto do PWA (nome, ícones, cores) — instalabilidade
 public/sw.js           service worker: cache do app shell e do último evento aberto, pra abrir offline
 public/icons/          ícones do PWA (gerados a partir da marca já existente, sem arte nova)
+public/privacidade.html política de privacidade (exigida pela tela de consentimento OAuth do Google pra sair do modo Testing)
 .env.example            modelo de variáveis de ambiente (ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, PORT)
 ```
 
