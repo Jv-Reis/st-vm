@@ -290,6 +290,7 @@ main{max-width:1180px; margin:0 auto; padding:32px 28px 80px;}
 .status-btn-group{display:flex; gap:6px;}
 .status-btn{flex:1 1 0; display:flex; align-items:center; justify-content:center; text-align:center; background:transparent; border:1.5px solid var(--border-strong); color:var(--text-muted); font-family:var(--font-mono); font-weight:600; font-size:0.66rem; letter-spacing:0.01em; line-height:1.25; padding:10px 4px; border-radius:var(--radius-sm); cursor:pointer; transition:.18s ease;}
 .status-btn:hover{border-color:var(--text-muted); color:var(--text);}
+.status-btn[data-status="nao_iniciado"].active{border-color:var(--rec); color:var(--rec); background:var(--rec-soft);}
 .status-btn[data-status="andamento"].active{border-color:var(--amber); color:var(--amber); background:var(--amber-soft);}
 .status-btn[data-status="feito"].active{border-color:var(--green); color:var(--green); background:var(--green-soft);}
 .status-times{margin-top:8px; min-height:14px; font-family:var(--font-mono); font-size:0.66rem; color:var(--text-faint); text-align:center;}
