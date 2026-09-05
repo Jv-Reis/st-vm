@@ -390,12 +390,26 @@ async function getValidGoogleAccessToken(userId) {
 
   const oauth2Client = googleOAuthClient(null);
   oauth2Client.setCredentials({ refresh_token: decryptToken(data.refresh_token_enc) });
-  const { credentials } = await oauth2Client.refreshAccessToken();
-  await supabaseAdmin.from('google_calendar_accounts').update({
-    access_token_enc: encryptToken(credentials.access_token),
-    access_token_expires_at: credentials.expiry_date ? new Date(credentials.expiry_date).toISOString() : null
-  }).eq('user_id', userId);
-  return credentials.access_token;
+  try {
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    await supabaseAdmin.from('google_calendar_accounts').update({
+      access_token_enc: encryptToken(credentials.access_token),
+      access_token_expires_at: credentials.expiry_date ? new Date(credentials.expiry_date).toISOString() : null
+    }).eq('user_id', userId);
+    return credentials.access_token;
+  } catch (err) {
+    // refresh_token revogado ou expirado (ex: a pessoa tirou o acesso do
+    // CAPTURA em myaccount.google.com/permissions) — o Google recusa com
+    // "invalid_grant" e não tem como recuperar sem reconectar do zero.
+    // Apaga a conexão salva pra "Meus eventos" voltar a mostrar o botão de
+    // conectar, em vez de continuar dizendo "conectado" pra um token morto.
+    const isInvalidGrant = err.message === 'invalid_grant' || err.response?.data?.error === 'invalid_grant';
+    if (isInvalidGrant) {
+      await supabaseAdmin.from('google_calendar_accounts').delete().eq('user_id', userId);
+    }
+    logError('Erro ao renovar token do Google:', err);
+    return null;
+  }
 }
 
 // Best-effort: uma falha aqui nunca pode impedir a publicação/edição do
