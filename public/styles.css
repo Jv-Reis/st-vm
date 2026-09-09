@@ -14,6 +14,8 @@
   --amber-soft: rgba(255,212,0,0.14);
   --green: #33d17a;
   --green-soft: rgba(51,209,122,0.14);
+  --blue: #3b9dff;
+  --blue-soft: rgba(59,157,255,0.14);
   --danger: #ff5470;
   --font-display: 'Space Grotesk', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
@@ -159,7 +161,8 @@ a{color:inherit;}
 .report-stat b{display:block; font-size:1.4rem; color:#8a6a00;}
 .report-stat span{font-size:0.78rem; color:#666; text-transform:uppercase; letter-spacing:0.04em;}
 .report-content h3{font-size:1rem; margin:28px 0 8px; border-bottom:1px solid #ddd; padding-bottom:6px;}
-.report-table{width:100%; border-collapse:collapse; font-size:0.88rem; margin-bottom:6px;}
+.report-table-wrap{overflow-x:auto; margin-bottom:6px;}
+.report-table{width:100%; min-width:560px; border-collapse:collapse; font-size:0.88rem;}
 .report-table td, .report-table th{padding:6px 8px; border-bottom:1px solid #eee; text-align:left;}
 .report-status{width:24px; text-align:center; font-weight:700;}
 .report-muted{color:#888; font-size:0.82rem;}
@@ -258,6 +261,7 @@ main{max-width:1180px; margin:0 auto; padding:32px 28px 80px;}
 .card-icon{width:34px; height:34px; border-radius:9px; flex:0 0 auto; background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-muted);}
 .card.is-done .card-icon{color:var(--green); border-color:rgba(51,209,122,0.35);}
 .card.is-progress .card-icon{color:var(--amber); border-color:rgba(255,212,0,0.35);}
+.card.is-posted .card-icon{color:var(--blue); border-color:rgba(59,157,255,0.35);}
 
 .status-indicator{position:relative; width:16px; height:16px; flex:0 0 auto;}
 .dot{position:absolute; inset:0; margin:auto; width:9px; height:9px; border-radius:50%; background:var(--rec); top:3.5px; left:3.5px; animation:pulseDot2 1.7s ease-in-out infinite;}
@@ -266,6 +270,8 @@ main{max-width:1180px; margin:0 auto; padding:32px 28px 80px;}
 .check .icon{width:16px; height:16px; stroke-width:2.4;}
 .card.is-done .dot{display:none;}
 .card.is-done .check{display:flex;}
+.card.is-posted .dot{display:none;}
+.card.is-posted .check{display:flex; color:var(--blue);}
 
 .card-title{font-family:var(--font-display); font-weight:700; font-size:1.02rem; margin:0 0 14px;}
 
@@ -295,21 +301,25 @@ main{max-width:1180px; margin:0 auto; padding:32px 28px 80px;}
 .rules-col ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
 .rules-col li{font-size:0.74rem; color:var(--text-muted); line-height:1.4;}
 
-.status-btn-group{display:flex; gap:6px;}
-.status-btn{flex:1 1 0; display:flex; align-items:center; justify-content:center; text-align:center; background:transparent; border:1.5px solid var(--border-strong); color:var(--text-muted); font-family:var(--font-mono); font-weight:600; font-size:0.66rem; letter-spacing:0.01em; line-height:1.25; padding:10px 4px; border-radius:var(--radius-sm); cursor:pointer; transition:.18s ease;}
+.status-btn-group{display:flex; flex-wrap:wrap; gap:6px;}
+.status-btn{flex:1 1 70px; display:flex; align-items:center; justify-content:center; text-align:center; background:transparent; border:1.5px solid var(--border-strong); color:var(--text-muted); font-family:var(--font-mono); font-weight:600; font-size:0.66rem; letter-spacing:0.01em; line-height:1.25; padding:10px 4px; border-radius:var(--radius-sm); cursor:pointer; transition:.18s ease;}
 .status-btn:hover{border-color:var(--text-muted); color:var(--text);}
 .status-btn[data-status="nao_iniciado"].active{border-color:var(--rec); color:var(--rec); background:var(--rec-soft);}
 .status-btn[data-status="andamento"].active{border-color:var(--amber); color:var(--amber); background:var(--amber-soft);}
 .status-btn[data-status="feito"].active{border-color:var(--green); color:var(--green); background:var(--green-soft);}
+.status-btn[data-status="postado"].active{border-color:var(--blue); color:var(--blue); background:var(--blue-soft);}
 .status-times{margin-top:8px; min-height:14px; font-family:var(--font-mono); font-size:0.66rem; color:var(--text-faint); text-align:center;}
 
 .captured-stamp{display:none; align-items:center; gap:6px; position:absolute; top:-10px; right:16px; background:var(--green); color:#0c1710; font-family:var(--font-mono); font-weight:600; font-size:0.63rem; padding:4px 9px; border-radius:999px; letter-spacing:0.03em; box-shadow:0 4px 14px rgba(51,209,122,0.35);}
 .card.is-done .captured-stamp{display:flex;}
 .card.is-progress .captured-stamp{display:flex; background:var(--amber); color:#241d00; box-shadow:0 4px 14px rgba(255,212,0,0.35);}
+.card.is-posted .captured-stamp{display:flex; background:var(--blue); color:#001a33; box-shadow:0 4px 14px rgba(59,157,255,0.35);}
 .card.is-done{border-color:rgba(51,209,122,0.35); background:linear-gradient(180deg, rgba(51,209,122,0.05), var(--surface) 40%);}
 .card.is-done .vf-corner{border-color:var(--green);}
 .card.is-progress{border-color:rgba(255,212,0,0.35); background:linear-gradient(180deg, rgba(255,212,0,0.05), var(--surface) 40%);}
 .card.is-progress .vf-corner{border-color:var(--amber);}
+.card.is-posted{border-color:rgba(59,157,255,0.35); background:linear-gradient(180deg, rgba(59,157,255,0.05), var(--surface) 40%);}
+.card.is-posted .vf-corner{border-color:var(--blue);}
 
 /* ---------- MISSIONS ---------- */
 .missions-section{margin-top:8px; padding-top:38px; border-top:1px solid var(--border);}

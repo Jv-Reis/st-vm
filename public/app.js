@@ -576,6 +576,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
           '<button class="status-btn active" type="button" data-status="nao_iniciado" data-id="'+item.id+'">Não iniciado</button>'+
           '<button class="status-btn" type="button" data-status="andamento" data-id="'+item.id+'">Em andamento</button>'+
           '<button class="status-btn" type="button" data-status="feito" data-id="'+item.id+'">Feito</button>'+
+          '<button class="status-btn" type="button" data-status="postado" data-id="'+item.id+'">Postado</button>'+
         '</div>'+
         '<div class="status-times" id="times-'+item.id+'"></div>'+
       '</article>'
@@ -1039,7 +1040,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function handleRemoteProgress(msg){
     const action = msg.action;
     const payload = msg.payload || {};
-    if(action === 'status') applyStatus(payload.sceneId, { status: payload.status, andamentoAt: payload.andamentoAt, feitoAt: payload.feitoAt });
+    if(action === 'status') applyStatus(payload.sceneId, { status: payload.status, andamentoAt: payload.andamentoAt, feitoAt: payload.feitoAt, postadoAt: payload.postadoAt });
     else if(action === 'record') applyStatus(payload.sceneId, { status: 'feito', feitoAt: payload.time });
     else if(action === 'unrecord') applyStatus(payload.sceneId, null);
     else if(action === 'mission') applyMissionKey(payload.cat + '-' + (payload.itemKey ?? payload.idx), true);
@@ -1320,7 +1321,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   function isDone(id){
-    return !!(recorded[id] && recorded[id].status === 'feito');
+    return !!(recorded[id] && (recorded[id].status === 'feito' || recorded[id].status === 'postado'));
   }
 
   function updateAll(){
@@ -1372,8 +1373,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const timesEl = document.getElementById('times-'+id);
     const status = entry && entry.status;
 
-    if(status === 'andamento' || status === 'feito'){
-      recorded[id] = { status, andamentoAt: entry.andamentoAt || null, feitoAt: entry.feitoAt || null };
+    if(status === 'andamento' || status === 'feito' || status === 'postado'){
+      recorded[id] = { status, andamentoAt: entry.andamentoAt || null, feitoAt: entry.feitoAt || null, postadoAt: entry.postadoAt || null };
     } else {
       delete recorded[id];
     }
@@ -1381,6 +1382,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(card){
       card.classList.toggle('is-progress', status === 'andamento');
       card.classList.toggle('is-done', status === 'feito');
+      card.classList.toggle('is-posted', status === 'postado');
       card.querySelectorAll('.status-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.status === (status || 'nao_iniciado'));
       });
@@ -1388,12 +1390,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(stamp){
       if(status === 'andamento') stamp.textContent = 'EM ANDAMENTO' + (recorded[id].andamentoAt ? ' · '+recorded[id].andamentoAt : '');
       else if(status === 'feito') stamp.textContent = 'CAPTURADO' + (recorded[id].feitoAt ? ' · '+recorded[id].feitoAt : '');
+      else if(status === 'postado') stamp.textContent = 'POSTADO' + (recorded[id].postadoAt ? ' · '+recorded[id].postadoAt : '');
       else stamp.textContent = 'CAPTURADO';
     }
     if(timesEl){
       const parts = [];
       if(recorded[id] && recorded[id].andamentoAt) parts.push('Iniciado ' + recorded[id].andamentoAt);
       if(recorded[id] && recorded[id].feitoAt) parts.push('Concluído ' + recorded[id].feitoAt);
+      if(recorded[id] && recorded[id].postadoAt) parts.push('Postado ' + recorded[id].postadoAt);
       timesEl.textContent = parts.join(' · ');
     }
 
@@ -1420,7 +1424,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function setSceneStatus(id, status){
     if(status === 'nao_iniciado'){
       applyStatus(id, null);
-      sendProgress('status', { sceneId: id, status: 'nao_iniciado', andamentoAt: null, feitoAt: null });
+      sendProgress('status', { sceneId: id, status: 'nao_iniciado', andamentoAt: null, feitoAt: null, postadoAt: null });
       return;
     }
     const now = new Date();
@@ -1429,7 +1433,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const entry = {
       status,
       andamentoAt: status === 'andamento' ? time : (prev.andamentoAt || null),
-      feitoAt: status === 'feito' ? time : (prev.feitoAt || null)
+      feitoAt: status === 'feito' ? time : (prev.feitoAt || null),
+      postadoAt: status === 'postado' ? time : (prev.postadoAt || null)
     };
     applyStatus(id, entry);
     sendProgress('status', { sceneId: id, ...entry });
@@ -1519,36 +1524,59 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   // ---------- relatório pós-evento ----------
 
+  // Mesma lógica de lib/pure.js#formatDelay, duplicada aqui porque app.js
+  // roda solto no navegador (script normal, não módulo ES) e não dá pra
+  // importar do lib/. Calcula quanto tempo passou entre dois horários
+  // "HH:MM" do mesmo evento (de "Feito" até "Postado"), já formatado.
+  function formatDelay(from, to){
+    const parse = (s) => {
+      const m = typeof s === 'string' && /^(\d{1,2}):(\d{2})$/.exec(s);
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    };
+    const a = parse(from);
+    const b = parse(to);
+    if(a === null || b === null) return null;
+    let diff = b - a;
+    if(diff < 0) diff += 24 * 60;
+    const h = Math.floor(diff / 60);
+    const m = diff % 60;
+    return h > 0 ? h+'h'+String(m).padStart(2,'0') : m+'min';
+  }
+
   function generateReport(){
     const eventTitle = document.getElementById('eventTitle').value || 'Evento';
     const total = CONTENT.length;
     const doneCount = CONTENT.filter(c => isDone(c.id)).length;
     const pct = total ? Math.round((doneCount/total)*100) : 0;
+    const postedCount = CONTENT.filter(c => recorded[c.id] && recorded[c.id].status === 'postado').length;
     const missionTotal = MISSIONS.reduce((sum, cat) => sum + cat.items.length, 0);
     const missionDone = Object.keys(missionsDone).length;
     const generatedAt = new Date().toLocaleString('pt-BR');
 
-    const statusLabel = { andamento: 'Em andamento', feito: 'Feito' };
+    const statusLabel = { andamento: 'Em andamento', feito: 'Feito', postado: 'Postado' };
     const phasesHTML = PHASES.map(phase => {
       const items = CONTENT.filter(c => c.phase === phase.key);
       if(!items.length) return '';
       const rows = items.map(item => {
         const entry = recorded[item.id];
         const status = entry ? statusLabel[entry.status] || '—' : 'Não iniciado';
+        const delay = entry ? formatDelay(entry.feitoAt, entry.postadoAt) : null;
         return (
           '<tr>'+
-            '<td class="report-status">'+(entry && entry.status === 'feito' ? '✓' : '—')+'</td>'+
+            '<td class="report-status">'+(entry && (entry.status === 'feito' || entry.status === 'postado') ? '✓' : '—')+'</td>'+
             '<td>'+escapeHTML(item.title)+'</td>'+
             '<td class="report-muted">'+escapeHTML(item.formato)+'</td>'+
             '<td class="report-muted">'+escapeHTML(status)+'</td>'+
             '<td class="report-muted">'+(entry && entry.andamentoAt ? escapeHTML(entry.andamentoAt) : '—')+'</td>'+
             '<td class="report-muted">'+(entry && entry.feitoAt ? escapeHTML(entry.feitoAt) : '—')+'</td>'+
+            '<td class="report-muted">'+(entry && entry.postadoAt ? escapeHTML(entry.postadoAt) : '—')+'</td>'+
+            '<td class="report-muted">'+(delay ? escapeHTML(delay) : '—')+'</td>'+
           '</tr>'
         );
       }).join('');
       return (
         '<h3>'+escapeHTML(phase.label)+'</h3>'+
-        '<table class="report-table"><thead><tr><th></th><th>Cena</th><th>Formato</th><th>Status</th><th>Iniciado</th><th>Concluído</th></tr></thead><tbody>'+rows+'</tbody></table>'
+        '<div class="report-table-wrap"><table class="report-table"><thead><tr><th></th><th>Cena</th><th>Formato</th><th>Status</th><th>Iniciado</th><th>Concluído</th><th>Postado</th><th>Demora p/ postar</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
       );
     }).join('');
 
@@ -1572,6 +1600,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       '<div class="report-sub">Relatório de cobertura · gerado em '+escapeHTML(generatedAt)+'</div>'+
       '<div class="report-stats">'+
         '<div class="report-stat"><b>'+doneCount+'/'+total+'</b><span>Cenas capturadas ('+pct+'%)</span></div>'+
+        '<div class="report-stat"><b>'+postedCount+'/'+doneCount+'</b><span>Já postadas</span></div>'+
         missionStatHTML+
       '</div>'+
       phasesHTML+
