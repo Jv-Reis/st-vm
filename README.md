@@ -105,6 +105,7 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 public/manifest.json   manifesto do PWA (nome, ícones, cores) — instalabilidade
 public/sw.js           service worker: cache do app shell e do último evento aberto, pra abrir offline
 public/icons/          ícones do PWA (gerados a partir da marca já existente, sem arte nova)
+tests/                  testes automatizados de RLS/autorização — ver tests/README.md
 public/privacidade.html política de privacidade (exigida pela tela de consentimento OAuth do Google pra sair do modo Testing)
 .env.example            modelo de variáveis de ambiente (ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, PORT)
 ```
@@ -128,6 +129,10 @@ Feita uma revisão manual do projeto inteiro (RLS de cada tabela conferida ao vi
 - Cabeçalhos básicos de segurança em toda resposta: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
 - Tokens do Google, `SUPABASE_SERVICE_ROLE_KEY` e as chaves de criptografia/assinatura nunca chegam ao navegador nem ao Git (`.env` sempre ignorado, conferido no histórico inteiro do repositório).
 - **IDOR corrigido (achado por pentest automatizado, 2026-08-29):** a tabela `events` tinha policy de SELECT e UPDATE liberada pra `anon` — como a `SUPABASE_ANON_KEY` é pública por natureza (enviada ao navegador via `/api/config` pro SDK de login), qualquer um podia usá-la direto contra o PostgREST do Supabase (fora do servidor) pra ler a tabela `events` inteira, de todo mundo, e sobrescrever qualquer evento sem estar logado. As policies agora exigem `authenticated` (dono ou membro autorizado); a rota pública `GET /api/events/:id` passou a ler com a `SUPABASE_SERVICE_ROLE_KEY` no servidor, então continua funcionando sem exigir login de quem só recebeu o link, mas sem depender de RLS aberta pra isso. SQL da correção em `supabase-fix-events-rls.sql`.
+
+## Testes
+
+`npm test` roda 15 testes automatizados de RLS/autorização (`anon` bloqueado em `events`/`event_members`, dono vs. editor vs. visualizador vs. estranho, promoção/rebaixamento de membro, o trigger que define `can_edit` no insert) direto contra o Postgres do Supabase, cada um dentro de uma transação sempre desfeita — não comita nada de verdade. É exatamente o tipo de teste que teria pego o IDOR original antes de precisar de um pentest externo pra achar. Precisa de uma variável `DATABASE_URL` (connection string do Postgres, diferente das chaves do `.env` principal) — passo a passo completo em `tests/README.md`.
 
 ## Observabilidade (opcional)
 
