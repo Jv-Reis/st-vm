@@ -49,6 +49,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const editEventLink = document.getElementById('editEventLink');
   const saveEventBtn = document.getElementById('saveEventBtn');
   const manageMembersBtn = document.getElementById('manageMembersBtn');
+  const goToNotesBtn = document.getElementById('goToNotesBtn');
   const notesBox = document.getElementById('notesBox');
   const notesStatus = document.getElementById('notesStatus');
   const membersView = document.getElementById('membersView');
@@ -872,6 +873,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   manageMembersBtn.addEventListener('click', showMembersView);
   membersBackBtn.addEventListener('click', function(){ showView('app'); });
+
+  goToNotesBtn.addEventListener('click', function(){
+    document.getElementById('notesSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if(!notesBox.readOnly) setTimeout(() => notesBox.focus(), 400);
+  });
 
   membersList.addEventListener('change', async function(e){
     const select = e.target.closest('select[data-user-id]');
