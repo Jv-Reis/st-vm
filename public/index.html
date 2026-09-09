@@ -130,6 +130,11 @@
       <input class="field-input" id="previewEventLocation" type="text" maxlength="120" placeholder="Endereço ou nome do espaço">
     </div>
     <div class="field-row">
+      <span class="field-label">Observações (opcional)</span>
+      <textarea class="field-textarea" id="previewNotes" maxlength="20000" placeholder="Qualquer coisa que a equipe precise saber..."></textarea>
+      <span class="field-hint">Vira o bloco de notas compartilhado da checklist ao vivo — dá pra continuar editando lá durante a cobertura, com todo mundo que edita o evento vendo em tempo real.</span>
+    </div>
+    <div class="field-row">
       <span class="field-label">Convidados do Google Calendar (um email por linha, opcional)</span>
       <textarea class="field-textarea" id="previewCalendarGuests" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
       <span class="field-hint">Só funciona se você tiver conectado o Google (Calendar + Drive) em "Meus eventos" — cada convidado recebe um convite por email quando você publicar/salvar.</span>
@@ -321,6 +326,16 @@
     </div>
 
     <div id="phasesContainer"></div>
+
+    <section class="notes-section" id="notesSection">
+      <div class="notes-head">
+        <span class="phase-eyebrow">Bloco de notas</span>
+        <div class="notes-title">Observações</div>
+        <div class="notes-sub">Compartilhado com toda a equipe em tempo real. Só quem edita o evento pode escrever.</div>
+      </div>
+      <textarea class="notes-box" id="notesBox" placeholder="Anote aqui o que a equipe precisa saber..." maxlength="20000"></textarea>
+      <span class="notes-status" id="notesStatus"></span>
+    </section>
 
     <section class="missions-section" id="missionsSection" hidden>
       <div class="missions-head">

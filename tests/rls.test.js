@@ -110,6 +110,26 @@ test('membro com can_edit=false NÃO edita o evento', async () => {
   });
 });
 
+test('membro com can_edit=true edita as notas (mesma policy de UPDATE vale pra qualquer coluna, notes incluída)', async () => {
+  await withTransaction(async (client) => {
+    const id = testEventId();
+    await seedEvent(client, { id, withMember: true, memberCanEdit: true });
+    await actAsUser(client, memberId);
+    const result = await client.query('update events set notes = $2 where id = $1', [id, 'lembrar do brinde']);
+    assert.equal(result.rowCount, 1);
+  });
+});
+
+test('membro com can_edit=false NÃO edita as notas', async () => {
+  await withTransaction(async (client) => {
+    const id = testEventId();
+    await seedEvent(client, { id, withMember: true, memberCanEdit: false });
+    await actAsUser(client, memberId);
+    const result = await client.query('update events set notes = $2 where id = $1', [id, 'lembrar do brinde']);
+    assert.equal(result.rowCount, 0);
+  });
+});
+
 test('estranho (não dono, não membro) não lê nem edita o evento', async () => {
   await withTransaction(async (client) => {
     const id = testEventId();

@@ -555,8 +555,9 @@ app.post('/api/events', requireAuth, async (req, res) => {
   const id = crypto.randomUUID().split('-')[0];
   const driveFolderId = typeof req.body.drive_folder_id === 'string' ? req.body.drive_folder_id : null;
   const allowMemberEdit = !!req.body.allow_member_edit;
+  const notes = typeof req.body.notes === 'string' ? req.body.notes.slice(0, 20000) : '';
   const db = scopedClient(req.token);
-  const { error } = await db.from('events').insert({ id, data: payload, owner_id: req.user.id, drive_folder_id: driveFolderId, allow_member_edit: allowMemberEdit });
+  const { error } = await db.from('events').insert({ id, data: payload, owner_id: req.user.id, drive_folder_id: driveFolderId, allow_member_edit: allowMemberEdit, notes });
   if (error) {
     logError('Erro ao salvar evento:', error);
     return res.status(500).json({ error: 'Não consegui salvar o evento. Tente de novo.' });
@@ -574,6 +575,7 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
   const updateFields = { data: payload };
   if (typeof req.body.drive_folder_id === 'string') updateFields.drive_folder_id = req.body.drive_folder_id;
   if (typeof req.body.allow_member_edit === 'boolean') updateFields.allow_member_edit = req.body.allow_member_edit;
+  if (typeof req.body.notes === 'string') updateFields.notes = req.body.notes.slice(0, 20000);
 
   const db = scopedClient(req.token);
   const { data, error } = await db
@@ -612,6 +614,30 @@ app.patch('/api/events/:id/permissions', requireAuth, async (req, res) => {
     return res.status(404).json({ error: 'Evento não encontrado ou você não é o dono dele.' });
   }
   res.json({ allow_member_edit: allow });
+});
+
+// Salva o bloco de notas direto da tela ao vivo, sem precisar reenviar o
+// evento inteiro (roteiro, cenas, missões...) só pra mudar um texto — ao
+// contrário do PATCH /api/events/:id, que é pra tela de prévia/edição.
+app.patch('/api/events/:id/notes', requireAuth, async (req, res) => {
+  const notes = typeof req.body.notes === 'string' ? req.body.notes.slice(0, 20000) : '';
+  const db = scopedClient(req.token);
+  const { data, error } = await db
+    .from('events')
+    .update({ notes })
+    .eq('id', req.params.id)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    logError('Erro ao salvar notas:', error);
+    return res.status(500).json({ error: 'Não consegui salvar as notas.' });
+  }
+  if (!data) {
+    return res.status(404).json({ error: 'Evento não encontrado ou você não tem permissão pra editar.' });
+  }
+  broadcastProgress(req.params.id, { action: 'notes', payload: { notes } });
+  res.json({ notes });
 });
 
 app.get('/api/events/:id/members', requireAuth, async (req, res) => {
@@ -771,14 +797,14 @@ app.get('/api/events/:id', async (req, res) => {
   // ignorando esse filtro por id). O `event_progress` continua com a role `anon`, que
   // segue liberada nele de propósito.
   const [{ data: row, error }, { data: progressRows }] = await Promise.all([
-    supabaseAdmin.from('events').select('data, owner_id, allow_member_edit, drive_folder_id').eq('id', id).maybeSingle(),
+    supabaseAdmin.from('events').select('data, owner_id, allow_member_edit, drive_folder_id, notes').eq('id', id).maybeSingle(),
     supabase.from('event_progress').select('action, payload').eq('event_id', id).order('created_at', { ascending: true })
   ]);
 
   if (error || !row) {
     return res.status(404).json({ error: 'Evento não encontrado. O link pode estar errado ou o evento foi removido.' });
   }
-  res.json({ ...row.data, owner_id: row.owner_id, allow_member_edit: !!row.allow_member_edit, drive_folder_id: row.drive_folder_id || null, progress: foldProgress(progressRows || []) });
+  res.json({ ...row.data, owner_id: row.owner_id, allow_member_edit: !!row.allow_member_edit, drive_folder_id: row.drive_folder_id || null, notes: row.notes || '', progress: foldProgress(progressRows || []) });
 });
 
 // ---------- progresso em tempo real (SSE) ----------

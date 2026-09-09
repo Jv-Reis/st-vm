@@ -336,6 +336,16 @@ main{max-width:1180px; margin:0 auto; padding:32px 28px 80px;}
 .mission-chip:hover{border-color:var(--border-strong); color:var(--text);}
 .mission-chip.done{background:var(--green-soft); border-color:rgba(51,209,122,0.4); color:var(--green); text-decoration:line-through; text-decoration-color:rgba(51,209,122,0.55);}
 
+/* ---------- NOTES ---------- */
+.notes-section{margin-top:8px; padding-top:38px; border-top:1px solid var(--border);}
+.notes-head{margin-bottom:14px;}
+.notes-title{font-family:var(--font-display); font-weight:700; font-size:1.25rem; margin-top:2px;}
+.notes-sub{font-family:var(--font-mono); font-size:0.76rem; color:var(--text-muted); margin-top:6px;}
+.notes-box{width:100%; min-height:120px; resize:vertical; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-family:var(--font-body); font-size:0.88rem; line-height:1.6; padding:14px 16px;}
+.notes-box:focus{outline:none; border-color:var(--amber);}
+.notes-box.readonly{background:var(--bg-soft); color:var(--text-muted); cursor:default;}
+.notes-status{display:block; margin-top:6px; min-height:14px; font-family:var(--font-mono); font-size:0.7rem; color:var(--text-faint);}
+
 /* ---------- COMPLETION BANNER ---------- */
 .completion-banner{position:fixed; left:50%; bottom:22px; transform:translate(-50%,140%); z-index:60; width:min(92vw,480px); background:linear-gradient(135deg, #182a1f, var(--surface)); border:1px solid rgba(51,209,122,0.4); border-radius:18px; padding:18px 22px; display:flex; align-items:center; gap:14px; box-shadow:0 20px 60px rgba(0,0,0,0.45); transition:transform .5s cubic-bezier(.34,1.56,.64,1);}
 .completion-banner.visible{transform:translate(-50%,0);}

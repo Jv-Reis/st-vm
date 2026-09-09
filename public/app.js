@@ -49,6 +49,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const editEventLink = document.getElementById('editEventLink');
   const saveEventBtn = document.getElementById('saveEventBtn');
   const manageMembersBtn = document.getElementById('manageMembersBtn');
+  const notesBox = document.getElementById('notesBox');
+  const notesStatus = document.getElementById('notesStatus');
   const membersView = document.getElementById('membersView');
   const membersList = document.getElementById('membersList');
   const membersBackBtn = document.getElementById('membersBackBtn');
@@ -60,6 +62,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const previewEventEndDate = document.getElementById('previewEventEndDate');
   const eventDateWarning = document.getElementById('eventDateWarning');
   const previewEventLocation = document.getElementById('previewEventLocation');
+  const previewNotes = document.getElementById('previewNotes');
   const previewCalendarGuests = document.getElementById('previewCalendarGuests');
   const previewAllowMemberEdit = document.getElementById('previewAllowMemberEdit');
   const previewDriveFolders = document.getElementById('previewDriveFolders');
@@ -95,6 +98,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   let sb = null;
   let currentUser = null;
+  let cachedAccessToken = null;
   const PENDING_DRAFT_KEY = 'captura_pending_draft';
   const PENDING_ROTEIRO_KEY = 'captura_pending_roteiro';
   const HERO_DISMISSED_KEY = 'captura_hero_dismissed';
@@ -224,6 +228,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       drive_folder_id: data.drive_folder_id || null,
       calendar_guests: Array.isArray(data.calendar_guests) ? data.calendar_guests : [],
       allow_member_edit: !!data.allow_member_edit,
+      notes: data.notes || '',
       phases: (data.phases || []).map(p => ({
         key: p.key || ('fase_' + Math.random().toString(36).slice(2, 8)),
         label: p.label || 'Fase',
@@ -263,6 +268,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     previewEventLocation.value = draft.event_location || '';
     previewCalendarGuests.value = (draft.calendar_guests || []).join('\n');
     previewAllowMemberEdit.checked = !!draft.allow_member_edit;
+    previewNotes.value = draft.notes || '';
     previewDriveFolders.value = (draft.drive_folders || []).join('\n');
     renderDriveFolderAction();
     validateEventDates();
@@ -425,6 +431,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   previewAllowMemberEdit.addEventListener('change', function(e){
     if(draft) draft.allow_member_edit = !!e.target.checked;
+  });
+
+  previewNotes.addEventListener('input', function(e){
+    if(draft) draft.notes = e.target.value;
   });
 
   function renderDriveFolderAction(){
@@ -616,6 +626,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     currentEventDate = data.event_date || '';
     currentEventEndDate = data.event_end_date || '';
     currentEventLocation = data.event_location || '';
+    notesBox.value = data.notes || '';
+    notesStatus.textContent = '';
 
     render();
     renderMissions();
@@ -672,6 +684,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     updateEditLinkVisibility();
     refreshSaveButton();
     refreshManageMembersButton();
+    refreshNotesEditability();
 
     const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventEndDate, currentEventLocation, link);
     if(calUrl){
@@ -702,12 +715,82 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
+  function refreshNotesEditability(){
+    const canEdit = isOwner() || currentMemberCanEdit;
+    notesBox.readOnly = !canEdit;
+    notesBox.classList.toggle('readonly', !canEdit);
+    notesStatus.hidden = !canEdit;
+  }
+
   function setSaveButtonState(saved, canEdit){
     eventSaved = saved;
     currentMemberCanEdit = saved && !!canEdit;
     saveEventBtn.textContent = saved ? '✓ Salvo (clique pra remover)' : '💾 Salvar nos meus eventos';
     updateEditLinkVisibility();
+    refreshNotesEditability();
   }
+
+  // ---------- bloco de notas compartilhado ----------
+  // Mesmo racional da fila offline de progresso: campo é usado ao vivo, em
+  // rede instável. Mas notas não são um log de ações ordenadas — é só "o
+  // valor da caixa venceu" — então não precisa de fila persistente (IndexedDB),
+  // basta um flag de "ainda não confirmado" e tentar de novo quando a conexão
+  // voltar, ou ao esconder/fechar a aba (sync via `keepalive`, com o token em
+  // cache pra não depender de um await antes do fetch sair).
+
+  let notesSaveTimer = null;
+  let notesDirty = false;
+
+  async function saveNotesNow(opts){
+    if(!currentEventId) return;
+    const keepalive = !!(opts && opts.keepalive);
+    const token = keepalive ? cachedAccessToken : await accessToken();
+    if(!token){
+      notesDirty = true;
+      notesStatus.textContent = 'Não salvou (sessão expirada) — faça login de novo';
+      return;
+    }
+    try {
+      const resp = await fetch('/api/events/' + currentEventId + '/notes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ notes: notesBox.value }),
+        keepalive
+      });
+      if(!resp.ok){
+        const result = await resp.json().catch(() => ({}));
+        throw new Error(result.error || 'Erro ao salvar as notas.');
+      }
+      notesDirty = false;
+      notesStatus.textContent = 'Salvo';
+      setTimeout(() => { if(notesStatus.textContent === 'Salvo') notesStatus.textContent = ''; }, 2000);
+    } catch(err){
+      notesDirty = true;
+      notesStatus.textContent = 'Não salvou — tenta de novo quando a conexão voltar';
+    }
+  }
+
+  notesBox.addEventListener('input', function(){
+    notesDirty = true;
+    notesStatus.textContent = 'Salvando…';
+    clearTimeout(notesSaveTimer);
+    notesSaveTimer = setTimeout(() => saveNotesNow(), 900);
+  });
+
+  window.addEventListener('online', function(){
+    if(notesDirty) saveNotesNow();
+  });
+
+  function flushNotesIfDirty(){
+    if(!notesDirty) return;
+    clearTimeout(notesSaveTimer);
+    saveNotesNow({ keepalive: true });
+  }
+
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'hidden') flushNotesIfDirty();
+  });
+  window.addEventListener('pagehide', flushNotesIfDirty);
 
   async function refreshSaveButton(){
     const eligible = currentEventId && currentUser && !isOwner();
@@ -878,6 +961,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     currentEventDate = '';
     currentEventEndDate = '';
     currentEventLocation = '';
+    notesBox.value = '';
+    notesStatus.textContent = '';
+    clearTimeout(notesSaveTimer);
+    notesDirty = false;
+    refreshNotesEditability();
   }
 
   // ---------- fila offline de progresso (IndexedDB) ----------
@@ -1046,6 +1134,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     else if(action === 'mission') applyMissionKey(payload.cat + '-' + (payload.itemKey ?? payload.idx), true);
     else if(action === 'unmission') applyMissionKey(payload.cat + '-' + (payload.itemKey ?? payload.idx), false);
     else if(action === 'reset') resetAllProgress();
+    else if(action === 'notes'){
+      // não sobrescreve se a pessoa estiver digitando ali agora, ou se já tem uma
+      // edição local pendente de salvar — a atualização dela mesma vai chegar
+      // (e prevalecer) quando o debounce/retry dela salvar
+      if(document.activeElement !== notesBox && !notesDirty) notesBox.value = payload.notes;
+    }
   }
 
   function resyncProgress(id){
@@ -1054,6 +1148,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       resetAllProgress();
       Object.entries(data.progress.recorded || {}).forEach(([sceneId, entry]) => applyStatus(sceneId, entry));
       Object.entries(data.progress.missionsDone || {}).forEach(([key, done]) => { if(done) applyMissionKey(key, true); });
+      if(document.activeElement !== notesBox && !notesDirty) notesBox.value = data.notes || '';
     }).catch(function(){});
   }
 
@@ -1651,12 +1746,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     updateEditLinkVisibility();
     refreshSaveButton();
     refreshManageMembersButton();
+    refreshNotesEditability();
     refreshGoogleCalendarButton();
   }
 
   async function accessToken(){
     const { data } = await sb.auth.getSession();
-    return data.session ? data.session.access_token : null;
+    cachedAccessToken = data.session ? data.session.access_token : null;
+    return cachedAccessToken;
   }
 
   function restorePendingRoteiroIfAny(){
@@ -1764,9 +1861,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
     const { data: { session } } = await sb.auth.getSession();
     currentUser = session?.user || null;
+    cachedAccessToken = session?.access_token || null;
     updateAuthUI();
     sb.auth.onAuthStateChange(function(_evt, session){
       currentUser = session?.user || null;
+      cachedAccessToken = session?.access_token || null;
       updateAuthUI();
       if(!restorePendingRoteiroIfAny()) restorePendingDraftIfAny();
     });
