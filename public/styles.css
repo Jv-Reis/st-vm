@@ -228,12 +228,7 @@ a{color:inherit;}
 .phase-pill.done{border-color:rgba(51,209,122,0.4); color:var(--green);}
 .phase-pill.done b{color:var(--green);}
 
-/* ---------- GOLDEN RULE ---------- */
 main{max-width:1180px; margin:0 auto; padding:32px 28px 80px;}
-.golden-rule{background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--amber); border-radius:0 var(--radius) var(--radius) 0; padding:16px 20px; margin-bottom:36px; display:flex; gap:14px; align-items:flex-start;}
-.golden-rule .gr-icon{color:var(--amber); flex:0 0 auto; margin-top:2px; width:20px; height:20px;}
-.golden-rule b{font-family:var(--font-display); display:block; margin-bottom:4px; font-size:0.92rem;}
-.golden-rule p{margin:0; font-size:0.85rem; color:var(--text-muted); line-height:1.6;}
 
 /* ---------- PHASES ---------- */
 .phase{margin-bottom:52px; scroll-margin-top:230px;}
@@ -375,7 +370,6 @@ footer{max-width:1180px; margin:0 auto; padding:0 28px 50px; color:var(--text-fa
   .sync-status{font-size:0.7rem; padding:5px 10px 5px 8px;}
   .topbar-actions{gap:6px; justify-content:flex-start;}
   .reset-btn{font-size:0.64rem; padding:6px 8px;}
-  .golden-rule{padding:14px 16px;}
   .import-card{padding:22px;}
   .hero-title{font-size:1.4rem;}
   .hero-sub{margin-bottom:22px;}

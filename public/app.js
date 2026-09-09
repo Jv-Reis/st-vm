@@ -1715,11 +1715,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   document.getElementById('reportBackBtn').addEventListener('click', function(){ showView('app'); });
   document.getElementById('reportPrintBtn').addEventListener('click', function(){ window.print(); });
 
-  document.getElementById('newRoteiroBtn').addEventListener('click', function(){
-    roteiroInput.value = '';
-    backToImport();
-  });
-
   const resetBtn = document.getElementById('resetBtn');
   let confirming = false;
   let confirmTimer = null;
