@@ -4,7 +4,7 @@
 // tests/rls.test.js: aqueles cobrem autorização, esses cobrem bug de lógica.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { foldProgress, validEventPayload, splitDriveFolderPath, makeRateLimiter } from '../lib/pure.js';
+import { foldProgress, computeMinimalProgressRows, validEventPayload, splitDriveFolderPath, makeRateLimiter, filterValidEmails } from '../lib/pure.js';
 
 // ---------- foldProgress ----------
 
@@ -45,6 +45,23 @@ test('foldProgress: mission/unmission alternam missionsDone', () => {
   assert.deepEqual(missionsDone, { 'flagra-1': true });
 });
 
+test('foldProgress: mission/unmission com "itemKey" (id estável do item) funciona igual ao "idx" legado', () => {
+  const { missionsDone } = foldProgress([
+    { action: 'mission', payload: { cat: 'flagra', itemKey: 'item_abc' } },
+    { action: 'mission', payload: { cat: 'flagra', itemKey: 'item_def' } },
+    { action: 'unmission', payload: { cat: 'flagra', itemKey: 'item_abc' } }
+  ]);
+  assert.deepEqual(missionsDone, { 'flagra-item_def': true });
+});
+
+test('foldProgress: evento antigo com "idx" e novo com "itemKey" coexistem sem conflito', () => {
+  const { missionsDone } = foldProgress([
+    { action: 'mission', payload: { cat: 'flagra', idx: 0 } }, // linha antiga, de antes do id estável existir
+    { action: 'mission', payload: { cat: 'flagra', itemKey: 'item_novo' } } // linha nova, já com id estável
+  ]);
+  assert.deepEqual(missionsDone, { 'flagra-0': true, 'flagra-item_novo': true });
+});
+
 test('foldProgress: reset limpa cenas e missões registradas até ali', () => {
   const { recorded, missionsDone } = foldProgress([
     { action: 'status', payload: { sceneId: 'a', status: 'feito' } },
@@ -55,6 +72,75 @@ test('foldProgress: reset limpa cenas e missões registradas até ali', () => {
   ]);
   assert.deepEqual(recorded, {});
   assert.deepEqual(missionsDone, { 'y-0': true });
+});
+
+// ---------- computeMinimalProgressRows ----------
+// A invariante que importa de verdade: dobrar o histórico original tem que
+// dar EXATAMENTE o mesmo resultado que dobrar a versão compactada — é o que
+// garante que compactar o log nunca perde nem altera nenhum estado visível.
+
+function assertSameFoldedState(originalRows) {
+  const minimalRows = computeMinimalProgressRows(originalRows);
+  assert.deepEqual(foldProgress(minimalRows), foldProgress(originalRows));
+  return minimalRows;
+}
+
+test('computeMinimalProgressRows: reduz várias mudanças de status na mesma cena pra uma linha só', () => {
+  const original = [
+    { action: 'status', payload: { sceneId: 'a', status: 'andamento', andamentoAt: '14:00' } },
+    { action: 'status', payload: { sceneId: 'a', status: 'feito', andamentoAt: '14:00', feitoAt: '14:10' } }
+  ];
+  const minimal = assertSameFoldedState(original);
+  assert.equal(minimal.length, 1);
+  assert.equal(minimal[0].payload.status, 'feito');
+});
+
+test('computeMinimalProgressRows: cena voltada pra "não iniciado" não aparece mais no resultado', () => {
+  const original = [
+    { action: 'status', payload: { sceneId: 'a', status: 'feito', feitoAt: '14:10' } },
+    { action: 'status', payload: { sceneId: 'a', status: 'nao_iniciado' } }
+  ];
+  const minimal = assertSameFoldedState(original);
+  assert.equal(minimal.length, 0);
+});
+
+test('computeMinimalProgressRows: preserva missão marcada com "itemKey" e com "idx" legado ao mesmo tempo', () => {
+  const original = [
+    { action: 'mission', payload: { cat: 'flagra', idx: 0 } },
+    { action: 'mission', payload: { cat: 'flagra', itemKey: 'item_novo' } },
+    { action: 'unmission', payload: { cat: 'flagra', idx: 0 } }
+  ];
+  const minimal = assertSameFoldedState(original);
+  assert.equal(minimal.length, 1);
+  assert.deepEqual(minimal[0].payload, { cat: 'flagra', itemKey: 'item_novo' });
+});
+
+test('computeMinimalProgressRows: um "reset" no meio do histórico não deixa rastro de antes dele', () => {
+  const original = [
+    { action: 'status', payload: { sceneId: 'a', status: 'feito' } },
+    { action: 'mission', payload: { cat: 'x', idx: 0 } },
+    { action: 'reset', payload: {} },
+    { action: 'status', payload: { sceneId: 'b', status: 'andamento', andamentoAt: '15:00' } }
+  ];
+  const minimal = assertSameFoldedState(original);
+  assert.equal(minimal.length, 1);
+  assert.equal(minimal[0].payload.sceneId, 'b');
+});
+
+test('computeMinimalProgressRows: histórico já vazio (só reset, ou nada) compacta pra zero linhas', () => {
+  assert.deepEqual(computeMinimalProgressRows([]), []);
+  assertSameFoldedState([{ action: 'reset', payload: {} }]);
+});
+
+test('computeMinimalProgressRows: ações legadas "record"/"unrecord" também compactam certo', () => {
+  const original = [
+    { action: 'record', payload: { sceneId: 'a', time: '14:10' } },
+    { action: 'status', payload: { sceneId: 'b', status: 'andamento', andamentoAt: '14:20' } },
+    { action: 'unrecord', payload: { sceneId: 'a' } }
+  ];
+  const minimal = assertSameFoldedState(original);
+  assert.equal(minimal.length, 1);
+  assert.equal(minimal[0].payload.sceneId, 'b');
 });
 
 // ---------- validEventPayload ----------
@@ -69,7 +155,8 @@ test('validEventPayload: preenche os defaults quando só "scenes" vem no body', 
     event_date: '',
     event_end_date: '',
     event_location: '',
-    drive_folders: []
+    drive_folders: [],
+    calendar_guests: []
   });
 });
 
@@ -83,9 +170,10 @@ test('validEventPayload: rejeita body vazio/ausente', () => {
   assert.equal(validEventPayload(undefined), null);
 });
 
-test('validEventPayload: "drive_folders" cai pra array vazio se não vier como array', () => {
-  const payload = validEventPayload({ scenes: [], drive_folders: 'oops' });
+test('validEventPayload: "drive_folders" e "calendar_guests" caem pra array vazio se não vierem como array', () => {
+  const payload = validEventPayload({ scenes: [], drive_folders: 'oops', calendar_guests: 'oops' });
   assert.deepEqual(payload.drive_folders, []);
+  assert.deepEqual(payload.calendar_guests, []);
 });
 
 test('validEventPayload: preserva os valores mandados quando presentes', () => {
@@ -119,6 +207,25 @@ test('splitDriveFolderPath: sem barra vira um segmento só', () => {
 
 test('splitDriveFolderPath: string vazia vira lista vazia', () => {
   assert.deepEqual(splitDriveFolderPath(''), []);
+});
+
+// ---------- filterValidEmails ----------
+
+test('filterValidEmails: mantém só o que parece email de verdade', () => {
+  assert.deepEqual(
+    filterValidEmails(['fulana@gmail.com', 'texto qualquer', 'beltrano@empresa.com.br', '', 'sem-arroba.com']),
+    ['fulana@gmail.com', 'beltrano@empresa.com.br']
+  );
+});
+
+test('filterValidEmails: tira espaço em volta antes de validar', () => {
+  assert.deepEqual(filterValidEmails(['  fulana@gmail.com  ']), ['fulana@gmail.com']);
+});
+
+test('filterValidEmails: lista vazia ou não-array vira lista vazia', () => {
+  assert.deepEqual(filterValidEmails([]), []);
+  assert.deepEqual(filterValidEmails(undefined), []);
+  assert.deepEqual(filterValidEmails('fulana@gmail.com'), []);
 });
 
 // ---------- makeRateLimiter ----------

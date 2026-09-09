@@ -130,6 +130,18 @@
       <input class="field-input" id="previewEventLocation" type="text" maxlength="120" placeholder="Endereço ou nome do espaço">
     </div>
     <div class="field-row">
+      <span class="field-label">Convidados do Google Calendar (um email por linha, opcional)</span>
+      <textarea class="field-textarea" id="previewCalendarGuests" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
+      <span class="field-hint">Só funciona se você tiver conectado o Google (Calendar + Drive) em "Meus eventos" — cada convidado recebe um convite por email quando você publicar/salvar.</span>
+    </div>
+    <div class="field-row field-checkbox-row">
+      <label class="field-checkbox-label">
+        <input type="checkbox" id="previewAllowMemberEdit">
+        <span>Novos membros já entram podendo editar</span>
+      </label>
+      <span class="field-hint">Desligado (padrão): quem salvar o evento a partir de agora só visualiza, até você promover a pessoa em "Gerenciar equipe". Ligado: já entra podendo editar. Não muda quem já salvou antes — dá pra ajustar isso a qualquer momento em "Gerenciar equipe" ou voltando aqui pra editar o evento.</span>
+    </div>
+    <div class="field-row">
       <span class="field-label">Estrutura de pastas pro Google Drive (uma por linha, opcional)</span>
       <textarea class="field-textarea" id="previewDriveFolders" placeholder="Ex: Chegada&#10;Cerimônia&#10;Final/Fotos finais&#10;Final/Vídeos finais"></textarea>
       <span class="field-hint">Use <code>/</code> pra colocar uma pasta dentro de outra — ex: <code>Final/Fotos finais</code> cria a pasta "Fotos finais" dentro de "Final".</span>
@@ -264,7 +276,6 @@
           <div class="sync-status" id="syncStatus" hidden><span class="sync-dot"></span><span id="syncStatusText"></span></div>
           <a class="reset-btn" id="editEventLink" href="#" hidden>✎ Editar evento</a>
           <button class="reset-btn" id="saveEventBtn" type="button" hidden>💾 Salvar nos meus eventos</button>
-          <button class="reset-btn" id="allowMemberEditBtn" type="button" hidden>🔒 Só você edita</button>
           <button class="reset-btn" id="manageMembersBtn" type="button" hidden>👥 Gerenciar equipe</button>
           <button class="reset-btn" id="exportReportBtn" type="button">📄 Relatório</button>
           <button class="reset-btn" id="newRoteiroBtn" type="button">← Novo roteiro</button>

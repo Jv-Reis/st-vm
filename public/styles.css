@@ -102,6 +102,8 @@ a{color:inherit;}
 .field-row{margin-bottom:10px;}
 .field-hint{display:block; margin-top:5px; font-family:var(--font-mono); font-size:0.7rem; color:var(--text-faint); line-height:1.5;}
 .field-hint code{background:var(--surface-2); border:1px solid var(--border); border-radius:4px; padding:1px 5px; color:var(--amber); font-size:0.94em;}
+.field-checkbox-label{display:flex; align-items:center; gap:8px; font-family:var(--font-body); font-size:0.85rem; color:var(--text); cursor:pointer;}
+.field-checkbox-label input[type="checkbox"]{width:16px; height:16px; accent-color:var(--amber); cursor:pointer; flex:none;}
 .field-warning{background:var(--amber-soft); border:1px solid rgba(255,212,0,0.35); color:var(--amber); border-radius:var(--radius-sm); padding:8px 12px; font-size:0.78rem; line-height:1.4; margin-bottom:10px;}
 .field-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
 

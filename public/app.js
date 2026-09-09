@@ -48,7 +48,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const historyViewSwitch = document.getElementById('historyViewSwitch');
   const editEventLink = document.getElementById('editEventLink');
   const saveEventBtn = document.getElementById('saveEventBtn');
-  const allowMemberEditBtn = document.getElementById('allowMemberEditBtn');
   const manageMembersBtn = document.getElementById('manageMembersBtn');
   const membersView = document.getElementById('membersView');
   const membersList = document.getElementById('membersList');
@@ -61,6 +60,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const previewEventEndDate = document.getElementById('previewEventEndDate');
   const eventDateWarning = document.getElementById('eventDateWarning');
   const previewEventLocation = document.getElementById('previewEventLocation');
+  const previewCalendarGuests = document.getElementById('previewCalendarGuests');
+  const previewAllowMemberEdit = document.getElementById('previewAllowMemberEdit');
   const previewDriveFolders = document.getElementById('previewDriveFolders');
   const driveFolderAction = document.getElementById('driveFolderAction');
   const calendarLinkBtn = document.getElementById('calendarLinkBtn');
@@ -86,7 +87,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let currentEventLocation = '';
   let currentDriveFolderId = null;
   let currentOwnerId = null;
-  let currentAllowMemberEdit = false;
   let currentMemberCanEdit = false;
   let editingEventId = null;
   let eventSaved = false;
@@ -120,6 +120,30 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function iconOptions(selected){
     return ICONS.map(i => '<option value="'+i+'"'+(i===selected?' selected':'')+'>'+i+'</option>').join('');
+  }
+
+  // Dá um id estável (`key`) pra cada item de missão. Sem isso, o "feito"
+  // era rastreado só pela posição no array — reordenar ou remover um item
+  // desalinhava o progresso já marcado de todo mundo depois dele. Aceita
+  // tanto o formato antigo (string pura, de evento publicado antes dessa
+  // mudança) quanto o novo ({key, text}), pra funcionar com dado já salvo.
+  function normalizeMissionItems(items){
+    return (items || []).map(function(it){
+      if(typeof it === 'string') return { key: 'item_' + Math.random().toString(36).slice(2, 8), text: it };
+      return { key: it.key || ('item_' + Math.random().toString(36).slice(2, 8)), text: it.text || '' };
+    });
+  }
+
+  // Reconcilia a lista de itens depois de editar a caixa de texto (uma linha
+  // por item): quem não mudou de texto mantém o mesmo `key` (e o progresso
+  // já marcado continua valendo); só texto novo/alterado ganha um `key` novo.
+  function reconcileMissionItems(prevItems, newTexts){
+    const pool = (prevItems || []).slice();
+    return newTexts.map(function(text){
+      const idx = pool.findIndex(function(it){ return it.text === text; });
+      if(idx !== -1) return pool.splice(idx, 1)[0];
+      return { key: 'item_' + Math.random().toString(36).slice(2, 8), text: text };
+    });
   }
 
   // ---------- import ----------
@@ -198,6 +222,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         ? data.drive_folders
         : (data.phases || []).map(p => p.label || 'Fase'),
       drive_folder_id: data.drive_folder_id || null,
+      calendar_guests: Array.isArray(data.calendar_guests) ? data.calendar_guests : [],
+      allow_member_edit: !!data.allow_member_edit,
       phases: (data.phases || []).map(p => ({
         key: p.key || ('fase_' + Math.random().toString(36).slice(2, 8)),
         label: p.label || 'Fase',
@@ -218,7 +244,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         key: m.key || ('missao_' + Math.random().toString(36).slice(2, 8)),
         emoji: m.emoji || '',
         label: m.label || 'Categoria',
-        items: m.items || []
+        items: normalizeMissionItems(m.items)
       }))
     };
   }
@@ -235,6 +261,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     previewEventDate.value = draft.event_date || '';
     previewEventEndDate.value = draft.event_end_date || '';
     previewEventLocation.value = draft.event_location || '';
+    previewCalendarGuests.value = (draft.calendar_guests || []).join('\n');
+    previewAllowMemberEdit.checked = !!draft.allow_member_edit;
     previewDriveFolders.value = (draft.drive_folders || []).join('\n');
     renderDriveFolderAction();
     validateEventDates();
@@ -311,7 +339,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
           '<div><span class="field-label">Nome</span><input class="field-input" data-scope="missionCat" data-idx="'+cIdx+'" data-field="label" value="'+escapeAttr(cat.label)+'"></div>'+
           '<div><span class="field-label">Emoji</span><input class="field-input" data-scope="missionCat" data-idx="'+cIdx+'" data-field="emoji" value="'+escapeAttr(cat.emoji||'')+'"></div>'+
         '</div>'+
-        '<div class="field-row"><span class="field-label">Itens (um por linha)</span><textarea class="field-textarea" data-scope="missionItems" data-idx="'+cIdx+'" data-field="items" data-list="true">'+escapeHTML((cat.items||[]).join('\n'))+'</textarea></div>'+
+        '<div class="field-row"><span class="field-label">Itens (um por linha)</span><textarea class="field-textarea" data-scope="missionItems" data-idx="'+cIdx+'" data-field="items" data-list="true">'+escapeHTML((cat.items||[]).map(function(it){ return it.text; }).join('\n'))+'</textarea></div>'+
       '</div>'
     )).join('');
   }
@@ -347,7 +375,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     } else if(scope === 'missionCat'){
       draft.missions[idx][field] = value;
     } else if(scope === 'missionItems'){
-      draft.missions[idx].items = value;
+      draft.missions[idx].items = reconcileMissionItems(draft.missions[idx].items, value);
     }
   }
 
@@ -389,6 +417,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   previewDriveFolders.addEventListener('input', function(e){
     if(draft) draft.drive_folders = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+  });
+
+  previewCalendarGuests.addEventListener('input', function(e){
+    if(draft) draft.calendar_guests = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+  });
+
+  previewAllowMemberEdit.addEventListener('change', function(e){
+    if(draft) draft.allow_member_edit = !!e.target.checked;
   });
 
   function renderDriveFolderAction(){
@@ -537,7 +573,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         speechHTML+
         (rulesHTML ? '<div class="rules-grid">'+rulesHTML+'</div>' : '')+
         '<div class="status-btn-group" data-id="'+item.id+'">'+
-          '<button class="status-btn" type="button" data-status="nao_iniciado" data-id="'+item.id+'">Não iniciado</button>'+
+          '<button class="status-btn active" type="button" data-status="nao_iniciado" data-id="'+item.id+'">Não iniciado</button>'+
           '<button class="status-btn" type="button" data-status="andamento" data-id="'+item.id+'">Em andamento</button>'+
           '<button class="status-btn" type="button" data-status="feito" data-id="'+item.id+'">Feito</button>'+
         '</div>'+
@@ -548,7 +584,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function loadChecklist(data){
     PHASES = data.phases || [];
-    MISSIONS = data.missions || [];
+    MISSIONS = (data.missions || []).map(function(m){
+      return Object.assign({}, m, { items: normalizeMissionItems(m.items) });
+    });
 
     const phaseOrder = {};
     PHASES.forEach((p, i) => { phaseOrder[p.key] = i; });
@@ -598,7 +636,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     hideEventLink();
     disconnectProgressStream();
     currentOwnerId = null;
-    currentAllowMemberEdit = false;
     editingEventId = null;
     updateEditLinkVisibility();
     history.pushState({}, '', '/');
@@ -633,7 +670,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     connectProgressStream(id);
     updateEditLinkVisibility();
     refreshSaveButton();
-    refreshAllowMemberEditButton();
     refreshManageMembersButton();
 
     const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventEndDate, currentEventLocation, link);
@@ -705,36 +741,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
     } finally {
       saveEventBtn.disabled = false;
-    }
-  });
-
-  function setAllowMemberEditState(allow){
-    currentAllowMemberEdit = allow;
-    allowMemberEditBtn.textContent = allow ? '🔓 Novos membros já editam' : '🔒 Novos membros só veem';
-  }
-
-  function refreshAllowMemberEditButton(){
-    allowMemberEditBtn.hidden = !(currentEventId && isOwner());
-    if(!allowMemberEditBtn.hidden) setAllowMemberEditState(currentAllowMemberEdit);
-  }
-
-  allowMemberEditBtn.addEventListener('click', async function(){
-    allowMemberEditBtn.disabled = true;
-    try {
-      const token = await accessToken();
-      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
-      const resp = await fetch('/api/events/' + currentEventId + '/permissions', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ allow_member_edit: !currentAllowMemberEdit })
-      });
-      const result = await resp.json();
-      if(!resp.ok) throw new Error(result.error || 'Erro ao atualizar.');
-      setAllowMemberEditState(result.allow_member_edit);
-    } catch(err){
-      alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
-    } finally {
-      allowMemberEditBtn.disabled = false;
     }
   });
 
@@ -864,7 +870,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     calendarLinkBtn.hidden = true;
     driveFolderLinkBtn.hidden = true;
     saveEventBtn.hidden = true;
-    allowMemberEditBtn.hidden = true;
     manageMembersBtn.hidden = true;
     eventSaved = false;
     currentMemberCanEdit = false;
@@ -1037,8 +1042,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(action === 'status') applyStatus(payload.sceneId, { status: payload.status, andamentoAt: payload.andamentoAt, feitoAt: payload.feitoAt });
     else if(action === 'record') applyStatus(payload.sceneId, { status: 'feito', feitoAt: payload.time });
     else if(action === 'unrecord') applyStatus(payload.sceneId, null);
-    else if(action === 'mission') applyMissionKey(payload.cat + '-' + payload.idx, true);
-    else if(action === 'unmission') applyMissionKey(payload.cat + '-' + payload.idx, false);
+    else if(action === 'mission') applyMissionKey(payload.cat + '-' + (payload.itemKey ?? payload.idx), true);
+    else if(action === 'unmission') applyMissionKey(payload.cat + '-' + (payload.itemKey ?? payload.idx), false);
     else if(action === 'reset') resetAllProgress();
   }
 
@@ -1080,7 +1085,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         throw new Error(data.error || 'Evento não encontrado.');
       }
       currentOwnerId = data.owner_id || null;
-      currentAllowMemberEdit = !!data.allow_member_edit;
       currentDriveFolderId = data.drive_folder_id || null;
       loadChecklist(data);
       showEventLink(id);
@@ -1102,7 +1106,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       draft = normalizeDraft(data);
       editingEventId = id;
       currentOwnerId = data.owner_id || null;
-      currentAllowMemberEdit = !!data.allow_member_edit;
       currentDriveFolderId = data.drive_folder_id || null;
       renderPreviewAll();
       showView('preview');
@@ -1301,8 +1304,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
     section.hidden = false;
     grid.innerHTML = MISSIONS.map(cat=>{
-      const chips = cat.items.map((t,idx)=>
-        '<button type="button" class="mission-chip" data-cat="'+escapeAttr(cat.key)+'" data-idx="'+idx+'" data-key="'+escapeAttr(cat.key+'-'+idx)+'">'+escapeHTML(t)+'</button>'
+      const chips = cat.items.map((item)=>
+        '<button type="button" class="mission-chip" data-cat="'+escapeAttr(cat.key)+'" data-item-key="'+escapeAttr(item.key)+'" data-key="'+escapeAttr(cat.key+'-'+item.key)+'">'+escapeHTML(item.text)+'</button>'
       ).join('');
       return (
         '<div class="mission-cat">'+
@@ -1346,7 +1349,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function updateMissions(){
     MISSIONS.forEach(cat=>{
       let done = 0;
-      cat.items.forEach((t,idx)=>{ if(missionsDone[cat.key+'-'+idx]) done++; });
+      cat.items.forEach((item)=>{ if(missionsDone[cat.key+'-'+item.key]) done++; });
       const el = document.getElementById('misscount-'+cat.key);
       if(el) el.textContent = done+'/'+cat.items.length;
     });
@@ -1432,14 +1435,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     sendProgress('status', { sceneId: id, ...entry });
   }
 
-  function toggleMission(cat, idx){
-    const key = cat+'-'+idx;
+  function toggleMission(cat, itemKey){
+    const key = cat+'-'+itemKey;
     if(missionsDone[key]){
       applyMissionKey(key, false);
-      sendProgress('unmission', { cat, idx });
+      sendProgress('unmission', { cat, itemKey });
     } else {
       applyMissionKey(key, true);
-      sendProgress('mission', { cat, idx });
+      sendProgress('mission', { cat, itemKey });
     }
   }
 
@@ -1458,7 +1461,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(e.target.closest('#createDriveFolderBtn') || e.target.closest('#updateDriveFolderBtn')){ createDriveFolderStructure(); return; }
 
     const chip = e.target.closest('.mission-chip');
-    if(chip){ toggleMission(chip.dataset.cat, Number(chip.dataset.idx)); return; }
+    if(chip){ toggleMission(chip.dataset.cat, chip.dataset.itemKey); return; }
 
     const structBtn = e.target.closest('[data-action]');
     if(structBtn && draft){
@@ -1552,9 +1555,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const missionsHTML = MISSIONS.length ? (
       '<h3>Missões (momentos soltos)</h3>'+
       MISSIONS.map(cat => {
-        const rows = cat.items.map((t, idx) => {
-          const done = !!missionsDone[cat.key + '-' + idx];
-          return '<tr><td class="report-status">'+(done ? '✓' : '—')+'</td><td>'+escapeHTML(t)+'</td></tr>';
+        const rows = cat.items.map((item) => {
+          const done = !!missionsDone[cat.key + '-' + item.key];
+          return '<tr><td class="report-status">'+(done ? '✓' : '—')+'</td><td>'+escapeHTML(item.text)+'</td></tr>';
         }).join('');
         return '<p class="report-cat-label">'+escapeHTML(cat.emoji||'')+' '+escapeHTML(cat.label)+'</p><table class="report-table"><tbody>'+rows+'</tbody></table>';
       }).join('')
@@ -1618,7 +1621,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(currentUser) authStripEmail.textContent = currentUser.email || '';
     updateEditLinkVisibility();
     refreshSaveButton();
-    refreshAllowMemberEditButton();
     refreshManageMembersButton();
     refreshGoogleCalendarButton();
   }

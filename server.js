@@ -9,7 +9,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import { OAuth2Client } from 'google-auth-library';
 import * as Sentry from '@sentry/node';
-import { foldProgress, validEventPayload, splitDriveFolderPath, makeRateLimiter } from './lib/pure.js';
+import { foldProgress, validEventPayload, splitDriveFolderPath, makeRateLimiter, filterValidEmails } from './lib/pure.js';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -409,18 +409,24 @@ async function syncEventToGoogleCalendar(req, eventRow) {
     }
 
     const link = `${req.protocol}://${req.get('host')}/e/${eventRow.id}`;
+    const guests = filterValidEmails(data.calendar_guests);
     const body = {
       summary: data.event_title || 'Evento',
       location: data.event_location || undefined,
       description: 'Checklist do CAPTURA: ' + link,
       start: { dateTime: start.toISOString() },
-      end: { dateTime: end.toISOString() }
+      end: { dateTime: end.toISOString() },
+      attendees: guests.length ? guests.map(email => ({ email })) : undefined
     };
 
     const existingId = eventRow.google_calendar_event_id;
-    const url = existingId
+    const baseUrl = existingId
       ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${existingId}`
       : 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+    // sendUpdates=all só quando tem convidado de verdade — sem isso o Google
+    // adiciona os attendees sem avisar ninguém por email, o que anula o
+    // propósito do campo. Sem convidados, comportamento padrão de sempre.
+    const url = guests.length ? baseUrl + '?sendUpdates=all' : baseUrl;
 
     const resp = await fetch(url, {
       method: existingId ? 'PATCH' : 'POST',
@@ -548,8 +554,9 @@ app.post('/api/events', requireAuth, async (req, res) => {
 
   const id = crypto.randomUUID().split('-')[0];
   const driveFolderId = typeof req.body.drive_folder_id === 'string' ? req.body.drive_folder_id : null;
+  const allowMemberEdit = !!req.body.allow_member_edit;
   const db = scopedClient(req.token);
-  const { error } = await db.from('events').insert({ id, data: payload, owner_id: req.user.id, drive_folder_id: driveFolderId });
+  const { error } = await db.from('events').insert({ id, data: payload, owner_id: req.user.id, drive_folder_id: driveFolderId, allow_member_edit: allowMemberEdit });
   if (error) {
     logError('Erro ao salvar evento:', error);
     return res.status(500).json({ error: 'Não consegui salvar o evento. Tente de novo.' });
@@ -566,6 +573,7 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
 
   const updateFields = { data: payload };
   if (typeof req.body.drive_folder_id === 'string') updateFields.drive_folder_id = req.body.drive_folder_id;
+  if (typeof req.body.allow_member_edit === 'boolean') updateFields.allow_member_edit = req.body.allow_member_edit;
 
   const db = scopedClient(req.token);
   const { data, error } = await db
