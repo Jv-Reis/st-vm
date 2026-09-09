@@ -9,6 +9,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import { OAuth2Client } from 'google-auth-library';
 import * as Sentry from '@sentry/node';
+import { foldProgress, validEventPayload, splitDriveFolderPath, makeRateLimiter } from './lib/pure.js';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -49,29 +50,6 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Rate limit simples em memória (1 instância, sem Redis) — protege rotas de
-// abuso. Cada rota usa sua própria instância porque os limites fazem sentido
-// em escalas bem diferentes (gerar roteiro custa cota da IA; marcar progresso
-// é barato mas pode ser chamado com muito mais frequência num uso legítimo,
-// com vários membros da equipe no mesmo evento). `keyFn` deixa escolher se o
-// limite é por IP (padrão, rotas sem login) ou por conta (rotas autenticadas
-// — precisa rodar depois do `requireAuth` pra `req.user` já existir).
-function makeRateLimiter(windowMs, max, message, keyFn) {
-  const hits = new Map(); // chave (ip ou user id) -> timestamps[]
-  const getKey = keyFn || ((req) => req.ip || 'unknown');
-  return function rateLimit(req, res, next) {
-    const key = getKey(req);
-    const now = Date.now();
-    const recent = (hits.get(key) || []).filter(t => now - t < windowMs);
-    if (recent.length >= max) {
-      return res.status(429).json({ error: message });
-    }
-    recent.push(now);
-    hits.set(key, recent);
-    next();
-  };
-}
 
 const rateLimit = makeRateLimiter(
   15 * 60 * 1000, 10,
@@ -517,7 +495,7 @@ async function driveCreateFolderTree(accessToken, rootName, paths, existingRootI
   const idByPath = new Map();
 
   for (const rawPath of paths) {
-    const segments = String(rawPath).split('/').map(s => s.trim()).filter(Boolean);
+    const segments = splitDriveFolderPath(rawPath);
     let parentId = root.id;
     let currentPath = '';
     for (const segment of segments) {
@@ -561,21 +539,6 @@ app.post('/api/google/drive-folders', requireAuth, async (req, res) => {
     });
   }
 });
-
-function validEventPayload(body) {
-  const { event_title, phases, scenes, missions, event_date, event_end_date, event_location, drive_folders } = body || {};
-  if (!Array.isArray(scenes)) return null;
-  return {
-    event_title: event_title || 'Evento sem nome',
-    phases: phases || [],
-    scenes,
-    missions: missions || [],
-    event_date: event_date || '',
-    event_end_date: event_end_date || '',
-    event_location: event_location || '',
-    drive_folders: Array.isArray(drive_folders) ? drive_folders : []
-  };
-}
 
 app.post('/api/events', requireAuth, async (req, res) => {
   const payload = validEventPayload(req.body);
@@ -814,24 +777,6 @@ app.get('/api/events/:id', async (req, res) => {
 
 const PROGRESS_ACTIONS = new Set(['status', 'record', 'unrecord', 'mission', 'unmission', 'reset']);
 const progressSubscribers = new Map(); // eventId -> Set<res>
-
-function foldProgress(rows) {
-  const recorded = {};
-  const missionsDone = {};
-  for (const { action, payload } of rows) {
-    if (action === 'status') {
-      if (payload.status === 'nao_iniciado') delete recorded[payload.sceneId];
-      else recorded[payload.sceneId] = { status: payload.status, andamentoAt: payload.andamentoAt || null, feitoAt: payload.feitoAt || null };
-    }
-    // ações legadas, de progresso gravado antes do status em 3 níveis existir
-    else if (action === 'record') recorded[payload.sceneId] = { status: 'feito', andamentoAt: null, feitoAt: payload.time };
-    else if (action === 'unrecord') delete recorded[payload.sceneId];
-    else if (action === 'mission') missionsDone[payload.cat + '-' + payload.idx] = true;
-    else if (action === 'unmission') delete missionsDone[payload.cat + '-' + payload.idx];
-    else if (action === 'reset') { Object.keys(recorded).forEach(k => delete recorded[k]); Object.keys(missionsDone).forEach(k => delete missionsDone[k]); }
-  }
-  return { recorded, missionsDone };
-}
 
 function broadcastProgress(eventId, message) {
   const subs = progressSubscribers.get(eventId);

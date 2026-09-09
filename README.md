@@ -98,6 +98,8 @@ Bate só na raiz (`/`) — não consome créditos da Anthropic nem faz nenhuma e
 ```
 server.js              Express: /api/parse-roteiro (Anthropic/Claude), /api/events (CRUD + histórico, autenticado), /api/config,
                         progresso em tempo real (SSE), rotas /e/:id, /e/:id/editar, /historico
+lib/pure.js             funções sem efeito colateral (dobra de progresso, validação de payload, rate limiter) — separadas
+                        do server.js só pra dar pra testar sem subir servidor nem tocar banco
 public/index.html      import + prévia editável + login + histórico + checklist + relatório (uma página, alterna via JS)
 public/styles.css      estilos (adaptados do protótipo original)
 public/app.js          lógica: geração via IA, prévia editável (draft), auth (Supabase), roteamento por URL,
@@ -105,7 +107,7 @@ public/app.js          lógica: geração via IA, prévia editável (draft), aut
 public/manifest.json   manifesto do PWA (nome, ícones, cores) — instalabilidade
 public/sw.js           service worker: cache do app shell e do último evento aberto, pra abrir offline
 public/icons/          ícones do PWA (gerados a partir da marca já existente, sem arte nova)
-tests/                  testes automatizados de RLS/autorização — ver tests/README.md
+tests/                  testes automatizados (RLS/autorização + lógica pura) — ver tests/README.md
 public/privacidade.html política de privacidade (exigida pela tela de consentimento OAuth do Google pra sair do modo Testing)
 .env.example            modelo de variáveis de ambiente (ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, PORT)
 ```
@@ -132,7 +134,9 @@ Feita uma revisão manual do projeto inteiro (RLS de cada tabela conferida ao vi
 
 ## Testes
 
-`npm test` roda 15 testes automatizados de RLS/autorização (`anon` bloqueado em `events`/`event_members`, dono vs. editor vs. visualizador vs. estranho, promoção/rebaixamento de membro, o trigger que define `can_edit` no insert) direto contra o Postgres do Supabase, cada um dentro de uma transação sempre desfeita — não comita nada de verdade. É exatamente o tipo de teste que teria pego o IDOR original antes de precisar de um pentest externo pra achar. Precisa de uma variável `DATABASE_URL` (connection string do Postgres, diferente das chaves do `.env` principal) — passo a passo completo em `tests/README.md`.
+`npm test` roda duas frentes:
+- **RLS/autorização** (`tests/rls.test.js`, 15 testes): `anon` bloqueado em `events`/`event_members`, dono vs. editor vs. visualizador vs. estranho, promoção/rebaixamento de membro, o trigger que define `can_edit` no insert — direto contra o Postgres do Supabase, cada um dentro de uma transação sempre desfeita, não comita nada de verdade. É exatamente o tipo de teste que teria pego o IDOR original antes de precisar de um pentest externo pra achar. Precisa de uma variável `DATABASE_URL` (connection string do Postgres, diferente das chaves do `.env` principal) — passo a passo completo em `tests/README.md`.
+- **Lógica pura** (`tests/pure.test.js`, 18 testes): dobra do log de progresso, validação do payload de evento, separação de caminho de pasta do Drive, e o rate limiter — funções extraídas pra `lib/pure.js` de propósito, sem banco nem rede, rodam em milissegundos. Não precisam de `DATABASE_URL`.
 
 ## Observabilidade (opcional)
 
