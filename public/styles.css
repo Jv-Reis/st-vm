@@ -47,7 +47,7 @@ a{color:inherit;}
 [hidden]{display:none !important;}
 
 /* ---------- AUTH STRIP ---------- */
-.auth-strip{position:sticky; top:0; z-index:50; display:flex; justify-content:flex-end; align-items:center; gap:14px; padding:8px 20px; background:var(--bg-soft); border-bottom:1px solid var(--border); font-family:var(--font-mono); font-size:0.72rem;}
+.auth-strip{position:sticky; top:0; z-index:50; display:flex; justify-content:space-between; align-items:center; gap:14px; padding:8px 20px; background:var(--bg-soft); border-bottom:1px solid var(--border); font-family:var(--font-mono); font-size:0.72rem;}
 .auth-strip--static{position:static;}
 .auth-link{background:none; border:none; color:var(--text-muted); font-family:var(--font-mono); font-size:0.72rem; cursor:pointer; text-decoration:none; padding:10px 2px; margin:-10px -2px; display:inline-block;}
 .auth-link:hover{color:var(--text);}

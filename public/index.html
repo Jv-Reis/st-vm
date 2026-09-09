@@ -18,6 +18,7 @@
 <body>
 
 <div class="auth-strip" id="authStrip" hidden>
+  <div class="live-clock"><span class="live-dot"></span><span id="clockText">--:--:--</span></div>
   <span id="authStripLoggedOut">
     <button class="auth-link" id="authStripLoginBtn" type="button">Entrar</button>
   </span>
@@ -277,7 +278,6 @@
           </div>
         </div>
         <div class="topbar-actions">
-          <div class="live-clock"><span class="live-dot"></span><span id="clockText">--:--:--</span></div>
           <div class="sync-status" id="syncStatus" hidden><span class="sync-dot"></span><span id="syncStatusText"></span></div>
           <a class="reset-btn" id="editEventLink" href="#" hidden>✎ Editar evento</a>
           <button class="reset-btn" id="saveEventBtn" type="button" hidden>💾 Salvar nos meus eventos</button>
@@ -290,7 +290,6 @@
       </div>
 
       <div class="event-title-row">
-        <span class="event-label">Nome do evento</span>
         <input class="event-input" id="eventTitle" type="text" maxlength="70" aria-label="Nome do evento">
         <div class="event-sub" id="eventSub"></div>
       </div>
