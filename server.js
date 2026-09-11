@@ -648,6 +648,23 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
   filterValidEmails(payload.member_emails).forEach((email) => addMemberByEmail(req, data.id, email));
 });
 
+// Exclui o evento de verdade (só o dono) — event_members e event_progress
+// cascateiam sozinhos via FK, não precisa apagar nada mais aqui. Não mexe no
+// evento do Google Calendar nem na pasta do Drive, se existirem (fica órfão
+// lá; fora de escopo).
+app.delete('/api/events/:id', requireAuth, async (req, res) => {
+  const db = scopedClient(req.token);
+  const { data, error } = await db.from('events').delete().eq('id', req.params.id).select('id').maybeSingle();
+  if (error) {
+    logError('Erro ao excluir evento:', error);
+    return res.status(500).json({ error: 'Não consegui excluir o evento.' });
+  }
+  if (!data) {
+    return res.status(404).json({ error: 'Evento não encontrado ou você não é o dono dele.' });
+  }
+  res.json({ deleted: true });
+});
+
 app.patch('/api/events/:id/permissions', requireAuth, async (req, res) => {
   const db = scopedClient(req.token);
   const allow = !!req.body.allow_member_edit;

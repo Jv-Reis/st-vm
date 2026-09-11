@@ -1307,11 +1307,43 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     renderHistoryList();
   });
 
+  // Delegado no container (não em cada card) porque a lista inteira é
+  // recriada via innerHTML a cada render — um listener por card se perderia.
+  historyList.addEventListener('click', async function(e){
+    const btn = e.target.closest('[data-action="delete-event"], [data-action="remove-event"]');
+    if(!btn) return;
+    const id = btn.dataset.id;
+    const ev = historyEvents.find(x => x.id === id);
+    if(!ev) return;
+    const isOwnerDelete = btn.dataset.action === 'delete-event';
+    const confirmMsg = isOwnerDelete
+      ? 'Excluir "' + ev.event_title + '" permanentemente? Isso apaga o evento e todo o progresso registrado — não pode ser desfeito.'
+      : 'Remover "' + ev.event_title + '" da sua lista? Dá pra salvar de novo depois, se ainda tiver o link.';
+    if(!confirm(confirmMsg)) return;
+
+    btn.disabled = true;
+    try {
+      const token = await accessToken();
+      const url = isOwnerDelete ? ('/api/events/' + id) : ('/api/events/' + id + '/save');
+      const resp = await fetch(url, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error || 'Erro ao remover.');
+      historyEvents = historyEvents.filter(x => x.id !== id);
+      renderHistoryList();
+    } catch(err){
+      alert('Não consegui remover (' + (err.message || 'erro desconhecido') + ').');
+      btn.disabled = false;
+    }
+  });
+
   function historyCardHTML(ev){
     const date = new Date(ev.created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
     let meta = ev.scene_count ? (ev.scene_count + ' cenas · publicado em ' + date) : ('Rascunho, sem roteiro ainda · reservado em ' + date);
     if(!ev.is_owner) meta += ev.is_editor ? ' · salvo · pode editar' : ' · salvo, não é seu';
     const editLink = (ev.is_owner || ev.is_editor) ? '<a class="btn btn-primary" href="/e/'+encodeURIComponent(ev.id)+'/editar">Editar</a>' : '';
+    const dangerBtn = ev.is_owner
+      ? '<button type="button" class="btn btn-danger" data-action="delete-event" data-id="'+escapeAttr(ev.id)+'">Excluir</button>'
+      : '<button type="button" class="btn btn-danger" data-action="remove-event" data-id="'+escapeAttr(ev.id)+'">Remover</button>';
     return (
       '<div class="history-card'+(ev.is_owner ? '' : ' history-card--saved')+'">'+
         '<div>'+
@@ -1321,6 +1353,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         '<div class="history-actions">'+
           '<a class="btn" href="/e/'+encodeURIComponent(ev.id)+'">Ver</a>'+
           editLink+
+          dangerBtn+
         '</div>'+
       '</div>'
     );

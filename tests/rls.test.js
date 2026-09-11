@@ -271,3 +271,27 @@ test('add_event_member_by_email: quem NÃO é dono do evento recebe erro ao tent
     );
   });
 });
+
+test('dono exclui o próprio evento, e event_members do evento some junto (cascade)', async () => {
+  await withTransaction(async (client) => {
+    const id = testEventId();
+    await seedEvent(client, { id, withMember: true });
+    await actAsUser(client, ownerId);
+    const result = await client.query('delete from events where id = $1', [id]);
+    assert.equal(result.rowCount, 1);
+
+    await actAsAdmin(client);
+    const { rows } = await client.query('select 1 from event_members where event_id = $1', [id]);
+    assert.equal(rows.length, 0);
+  });
+});
+
+test('quem NÃO é dono não consegue excluir o evento', async () => {
+  await withTransaction(async (client) => {
+    const id = testEventId();
+    await seedEvent(client, { id, withMember: true });
+    await actAsUser(client, memberId); // é membro, mas não é dono
+    const result = await client.query('delete from events where id = $1', [id]);
+    assert.equal(result.rowCount, 0);
+  });
+});
