@@ -98,6 +98,8 @@ a{color:inherit;}
 .preview-section-title{font-family:var(--font-display); font-weight:700; font-size:1.05rem; margin-bottom:14px;}
 
 .field-label{font-family:var(--font-mono); font-size:0.62rem; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.08em; display:block; margin-bottom:4px;}
+/* Tela de criar/editar evento: labels de campo com mais destaque (maiores, brancos) */
+#previewView .field-label{font-size:0.85rem; color:var(--text); font-weight:600;}
 .field-input, .field-textarea, .field-select{width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-family:var(--font-body); font-size:0.85rem; padding:8px 10px; line-height:1.5;}
 .field-input:focus, .field-textarea:focus, .field-select:focus{outline:none; border-color:var(--amber);}
 .field-textarea{resize:vertical; min-height:60px; font-family:var(--font-mono); font-size:0.78rem;}
