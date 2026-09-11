@@ -67,6 +67,13 @@ const progressRateLimit = makeRateLimiter(
   60 * 1000, 120,
   'Muitas atualizações de progresso em pouco tempo. Espere um instante e tente de novo.'
 );
+// por conta, não por IP — convite manda email de verdade (Supabase Auth), então
+// existe custo real de abuso além de carga no servidor.
+const addMemberRateLimit = makeRateLimiter(
+  60 * 60 * 1000, 20,
+  'Muitos membros adicionados na última hora. Espere um pouco e tente de novo.',
+  (req) => req.user.id
+);
 
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY)
@@ -546,6 +553,49 @@ app.post('/api/google/drive-folders', requireAuth, async (req, res) => {
   }
 });
 
+// Adiciona alguém como membro do evento a partir do email digitado pelo dono
+// — sem isso, a única forma de virar membro era a própria pessoa achar o
+// link e clicar em "Salvar nos meus eventos". Quem já tem conta entra na
+// hora (via o RPC `add_event_member_by_email`, que baixa com segurança a
+// trava de "só auto-inserção" da policy de INSERT de `event_members`); quem
+// ainda não tem conta recebe um convite de verdade pelo Supabase Auth e já
+// fica vinculado ao evento assim que a conta é criada.
+async function addMemberByEmail(req, eventId, rawEmail) {
+  const email = filterValidEmails([rawEmail])[0];
+  if (!email) return { ok: false, error: 'Email inválido.' };
+
+  const db = scopedClient(req.token);
+  const { data: userId, error } = await db.rpc('add_event_member_by_email', { p_event_id: eventId, p_email: email });
+  if (error) {
+    if (error.message && error.message.includes('not event owner')) {
+      return { ok: false, error: 'Só o dono do evento pode adicionar membros.' };
+    }
+    logError('Erro ao adicionar membro:', error);
+    return { ok: false, error: 'Não consegui adicionar esse membro.' };
+  }
+  if (userId) return { ok: true, status: 'added', email };
+
+  if (!supabaseAdmin) return { ok: false, error: 'Convite não configurado no servidor.' };
+  const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${req.protocol}://${req.get('host')}/e/${eventId}`
+  });
+  if (inviteError) {
+    // pode acontecer numa corrida (reenvio, ou duas pessoas adicionando o
+    // mesmo email ao mesmo tempo) — a conta já existe nesse ponto, então
+    // tenta o RPC de novo em vez de falhar direto.
+    const { data: retryId } = await db.rpc('add_event_member_by_email', { p_event_id: eventId, p_email: email });
+    if (retryId) return { ok: true, status: 'added', email };
+    logError('Erro ao convidar novo usuário:', inviteError);
+    return { ok: false, error: 'Não consegui enviar o convite pra esse email.' };
+  }
+  const { error: insertError } = await supabaseAdmin.from('event_members').insert({ event_id: eventId, user_id: invited.user.id });
+  if (insertError && insertError.code !== '23505') {
+    logError('Erro ao vincular convidado ao evento:', insertError);
+    return { ok: false, error: 'Convite enviado, mas não consegui vincular ao evento.' };
+  }
+  return { ok: true, status: 'invited', email };
+}
+
 app.post('/api/events', requireAuth, async (req, res) => {
   const payload = validEventPayload(req.body);
   if (!payload) {
@@ -564,6 +614,7 @@ app.post('/api/events', requireAuth, async (req, res) => {
   }
   res.json({ id });
   syncEventToGoogleCalendar(req, { id, owner_id: req.user.id, data: payload, google_calendar_event_id: null });
+  filterValidEmails(payload.member_emails).forEach((email) => addMemberByEmail(req, id, email));
 });
 
 app.patch('/api/events/:id', requireAuth, async (req, res) => {
@@ -594,6 +645,7 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
   }
   res.json({ id: data.id });
   syncEventToGoogleCalendar(req, { id: data.id, owner_id: data.owner_id, data: payload, google_calendar_event_id: data.google_calendar_event_id });
+  filterValidEmails(payload.member_emails).forEach((email) => addMemberByEmail(req, data.id, email));
 });
 
 app.patch('/api/events/:id/permissions', requireAuth, async (req, res) => {
@@ -674,6 +726,14 @@ app.get('/api/events/:id/members', requireAuth, async (req, res) => {
   }));
 
   res.json({ members: withEmail });
+});
+
+app.post('/api/events/:id/members', requireAuth, addMemberRateLimit, async (req, res) => {
+  const result = await addMemberByEmail(req, req.params.id, req.body && req.body.email);
+  if (!result.ok) {
+    return res.status(result.error.includes('dono') ? 403 : 400).json({ error: result.error });
+  }
+  res.json({ status: result.status, email: result.email });
 });
 
 app.patch('/api/events/:id/members/:userId', requireAuth, async (req, res) => {

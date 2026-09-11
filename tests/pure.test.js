@@ -175,7 +175,8 @@ test('validEventPayload: preenche os defaults quando só "scenes" vem no body', 
     event_end_date: '',
     event_location: '',
     drive_folders: [],
-    calendar_guests: []
+    calendar_guests: [],
+    member_emails: []
   });
 });
 
@@ -189,10 +190,11 @@ test('validEventPayload: rejeita body vazio/ausente', () => {
   assert.equal(validEventPayload(undefined), null);
 });
 
-test('validEventPayload: "drive_folders" e "calendar_guests" caem pra array vazio se não vierem como array', () => {
-  const payload = validEventPayload({ scenes: [], drive_folders: 'oops', calendar_guests: 'oops' });
+test('validEventPayload: "drive_folders", "calendar_guests" e "member_emails" caem pra array vazio se não vierem como array', () => {
+  const payload = validEventPayload({ scenes: [], drive_folders: 'oops', calendar_guests: 'oops', member_emails: 'oops' });
   assert.deepEqual(payload.drive_folders, []);
   assert.deepEqual(payload.calendar_guests, []);
+  assert.deepEqual(payload.member_emails, []);
 });
 
 test('validEventPayload: preserva os valores mandados quando presentes', () => {
@@ -202,12 +204,14 @@ test('validEventPayload: preserva os valores mandados quando presentes', () => {
     phases: [{ key: 'p1' }],
     missions: [{ key: 'm1' }],
     event_date: '2026-10-10T14:00',
-    drive_folders: ['Cerimônia']
+    drive_folders: ['Cerimônia'],
+    member_emails: ['fulana@gmail.com']
   });
   assert.equal(payload.event_title, 'Ana & Bruno');
   assert.equal(payload.scenes.length, 1);
   assert.equal(payload.phases.length, 1);
   assert.equal(payload.drive_folders[0], 'Cerimônia');
+  assert.equal(payload.member_emails[0], 'fulana@gmail.com');
 });
 
 // ---------- splitDriveFolderPath ----------

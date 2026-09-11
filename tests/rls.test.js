@@ -219,3 +219,55 @@ test('event_progress continua público (anon insere e lê) — design intenciona
     assert.equal(rows[0].action, 'status');
   });
 });
+
+test('add_event_member_by_email: dono adiciona alguém com conta existente pelo email', async () => {
+  await withTransaction(async (client) => {
+    const id = testEventId();
+    await seedEvent(client, { id });
+    await actAsAdmin(client);
+    const { rows: userRows } = await client.query('select email from auth.users where id = $1', [memberId]);
+    const memberEmail = userRows[0].email;
+
+    await actAsUser(client, ownerId);
+    const { rows } = await client.query('select add_event_member_by_email($1, $2) as user_id', [id, memberEmail]);
+    assert.equal(rows[0].user_id, memberId);
+
+    await actAsAdmin(client);
+    const { rows: memberRows } = await client.query('select user_id from event_members where event_id = $1 and user_id = $2', [id, memberId]);
+    assert.equal(memberRows.length, 1);
+  });
+});
+
+test('add_event_member_by_email: dono adicionando o mesmo email 2x não duplica (idempotente)', async () => {
+  await withTransaction(async (client) => {
+    const id = testEventId();
+    await seedEvent(client, { id });
+    await actAsAdmin(client);
+    const { rows: userRows } = await client.query('select email from auth.users where id = $1', [memberId]);
+    const memberEmail = userRows[0].email;
+
+    await actAsUser(client, ownerId);
+    await client.query('select add_event_member_by_email($1, $2)', [id, memberEmail]);
+    await client.query('select add_event_member_by_email($1, $2)', [id, memberEmail]);
+
+    await actAsAdmin(client);
+    const { rows: memberRows } = await client.query('select user_id from event_members where event_id = $1 and user_id = $2', [id, memberId]);
+    assert.equal(memberRows.length, 1);
+  });
+});
+
+test('add_event_member_by_email: quem NÃO é dono do evento recebe erro ao tentar adicionar membro', async () => {
+  await withTransaction(async (client) => {
+    const id = testEventId();
+    await seedEvent(client, { id });
+    await actAsAdmin(client);
+    const { rows: userRows } = await client.query('select email from auth.users where id = $1', [memberId]);
+    const memberEmail = userRows[0].email;
+
+    await actAsUser(client, memberId); // memberId não é dono deste evento
+    await assert.rejects(
+      () => client.query('select add_event_member_by_email($1, $2)', [id, memberEmail]),
+      /not event owner/
+    );
+  });
+});

@@ -55,6 +55,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const membersView = document.getElementById('membersView');
   const membersList = document.getElementById('membersList');
   const membersBackBtn = document.getElementById('membersBackBtn');
+  const addMemberEmailInput = document.getElementById('addMemberEmailInput');
+  const addMemberBtn = document.getElementById('addMemberBtn');
+  const addMemberStatus = document.getElementById('addMemberStatus');
   const googleCalendarConnectBtn = document.getElementById('googleCalendarConnectBtn');
   const googleTestingNote = document.getElementById('googleTestingNote');
   const reportView = document.getElementById('reportView');
@@ -65,6 +68,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const previewEventLocation = document.getElementById('previewEventLocation');
   const previewNotes = document.getElementById('previewNotes');
   const previewCalendarGuests = document.getElementById('previewCalendarGuests');
+  const previewMemberEmails = document.getElementById('previewMemberEmails');
   const previewAllowMemberEdit = document.getElementById('previewAllowMemberEdit');
   const previewDriveFolders = document.getElementById('previewDriveFolders');
   const driveFolderAction = document.getElementById('driveFolderAction');
@@ -228,6 +232,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         : (data.phases || []).map(p => p.label || 'Fase'),
       drive_folder_id: data.drive_folder_id || null,
       calendar_guests: Array.isArray(data.calendar_guests) ? data.calendar_guests : [],
+      member_emails: Array.isArray(data.member_emails) ? data.member_emails : [],
       allow_member_edit: !!data.allow_member_edit,
       notes: data.notes || '',
       phases: (data.phases || []).map(p => ({
@@ -268,6 +273,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     previewEventEndDate.value = draft.event_end_date || '';
     previewEventLocation.value = draft.event_location || '';
     previewCalendarGuests.value = (draft.calendar_guests || []).join('\n');
+    previewMemberEmails.value = (draft.member_emails || []).join('\n');
     previewAllowMemberEdit.checked = !!draft.allow_member_edit;
     previewNotes.value = draft.notes || '';
     previewDriveFolders.value = (draft.drive_folders || []).join('\n');
@@ -428,6 +434,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   previewCalendarGuests.addEventListener('input', function(e){
     if(draft) draft.calendar_guests = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+  });
+
+  previewMemberEmails.addEventListener('input', function(e){
+    if(draft) draft.member_emails = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
   });
 
   previewAllowMemberEdit.addEventListener('change', function(e){
@@ -871,8 +881,37 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
-  manageMembersBtn.addEventListener('click', showMembersView);
+  manageMembersBtn.addEventListener('click', function(){
+    addMemberEmailInput.value = '';
+    addMemberStatus.textContent = '';
+    showMembersView();
+  });
   membersBackBtn.addEventListener('click', function(){ showView('app'); });
+
+  addMemberBtn.addEventListener('click', async function(){
+    const email = addMemberEmailInput.value.trim();
+    if(!email){ addMemberStatus.textContent = 'Digite um email.'; return; }
+    addMemberStatus.textContent = 'Adicionando…';
+    addMemberBtn.disabled = true;
+    try {
+      const token = await accessToken();
+      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+      const resp = await fetch('/api/events/' + currentEventId + '/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ email })
+      });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error || 'Erro ao adicionar.');
+      addMemberStatus.textContent = result.status === 'invited' ? 'Convite enviado por email.' : 'Adicionado à equipe.';
+      addMemberEmailInput.value = '';
+      showMembersView();
+    } catch(err){
+      addMemberStatus.textContent = 'Não consegui adicionar (' + (err.message || 'erro desconhecido') + ').';
+    } finally {
+      addMemberBtn.disabled = false;
+    }
+  });
 
   goToNotesBtn.addEventListener('click', function(){
     document.getElementById('notesSection').scrollIntoView({ behavior: 'smooth', block: 'start' });

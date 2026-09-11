@@ -140,6 +140,11 @@
       <textarea class="field-textarea" id="previewCalendarGuests" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
       <span class="field-hint">Só funciona se você tiver conectado o Google (Calendar + Drive) em "Meus eventos" — cada convidado recebe um convite por email quando você publicar/salvar.</span>
     </div>
+    <div class="field-row">
+      <span class="field-label">Membros da equipe (um email por linha, opcional)</span>
+      <textarea class="field-textarea" id="previewMemberEmails" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
+      <span class="field-hint">Cada email vira membro na hora (se já tiver conta no CAPTURA) ou recebe um convite por email (se ainda não tiver). Dá pra promover/remover depois em "Gerenciar equipe".</span>
+    </div>
     <div class="field-row field-checkbox-row">
       <label class="field-checkbox-label">
         <input type="checkbox" id="previewAllowMemberEdit">
@@ -250,6 +255,14 @@
   </div>
   <div class="preview-view">
     <p class="import-sub" style="margin-top:0;">Só quem salvou este evento aparece aqui. "Editor" pode alterar fases, cenas e missões — marcar progresso continua liberado pra qualquer um com o link, sem precisar disso.</p>
+    <div class="field-row" style="display:flex; gap:8px; align-items:flex-end;">
+      <div style="flex:1;">
+        <span class="field-label">Adicionar membro por email</span>
+        <input class="field-input" id="addMemberEmailInput" type="email" placeholder="nome@email.com">
+      </div>
+      <button class="btn btn-primary" id="addMemberBtn" type="button">Adicionar</button>
+    </div>
+    <div class="field-hint" id="addMemberStatus" style="margin-bottom:14px;"></div>
     <div id="membersList"></div>
   </div>
 </div>
