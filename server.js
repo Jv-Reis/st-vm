@@ -8,6 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import { OAuth2Client } from 'google-auth-library';
+import { createCalendarWorker } from './lib/calendar-sync.js';
 import * as Sentry from '@sentry/node';
 import { foldProgress, validEventPayload, splitDriveFolderPath, makeRateLimiter, filterValidEmails } from './lib/pure.js';
 
@@ -397,62 +398,52 @@ async function getValidGoogleAccessToken(userId) {
   }
 }
 
-// Best-effort: uma falha aqui nunca pode impedir a publicação/edição do
-// evento, que é a função principal do site. Só loga e segue.
-async function syncEventToGoogleCalendar(req, eventRow) {
-  try {
-    if (!eventRow.owner_id) return;
-    const data = eventRow.data || {};
-    if (!data.event_date) return;
-
-    const accessToken = await getValidGoogleAccessToken(eventRow.owner_id);
-    if (!accessToken) return; // dono não conectou o Google Calendar
-
-    const start = new Date(data.event_date);
-    if (isNaN(start.getTime())) return;
-    let end = data.event_end_date ? new Date(data.event_end_date) : null;
-    if (!end || isNaN(end.getTime()) || end <= start) {
-      end = new Date(start.getTime() + 4 * 60 * 60 * 1000);
-    }
-
-    const link = `${req.protocol}://${req.get('host')}/e/${eventRow.id}`;
-    const guests = filterValidEmails(data.calendar_guests);
-    const body = {
-      summary: data.event_title || 'Evento',
-      location: data.event_location || undefined,
-      description: 'Checklist do CAPTURA: ' + link,
-      start: { dateTime: start.toISOString() },
-      end: { dateTime: end.toISOString() },
-      attendees: guests.length ? guests.map(email => ({ email })) : undefined
-    };
-
-    const existingId = eventRow.google_calendar_event_id;
-    const baseUrl = existingId
-      ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${existingId}`
-      : 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
-    // sendUpdates=all só quando tem convidado de verdade — sem isso o Google
-    // adiciona os attendees sem avisar ninguém por email, o que anula o
-    // propósito do campo. Sem convidados, comportamento padrão de sempre.
-    const url = guests.length ? baseUrl + '?sendUpdates=all' : baseUrl;
-
-    const resp = await fetch(url, {
-      method: existingId ? 'PATCH' : 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if (!resp.ok) {
-      const bodyText = await resp.text();
-      logError('Erro ao sincronizar com Google Calendar:', new Error(`Google Calendar API ${resp.status}: ${bodyText}`));
-      return;
-    }
-    const result = await resp.json();
-    if (!existingId && result.id && supabaseAdmin) {
-      await supabaseAdmin.from('events').update({ google_calendar_event_id: result.id }).eq('id', eventRow.id);
-    }
-  } catch (err) {
-    logError('Erro ao sincronizar com Google Calendar:', err);
-  }
+// A fila é preenchida por triggers na mesma transação dos eventos/membros.
+const runCalendarSync = createCalendarWorker({
+  db: supabaseAdmin, getToken: getValidGoogleAccessToken,
+  baseUrl: process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:' + (process.env.PORT || 3000),
+  logError
+});
+if (supabaseAdmin) {
+  setInterval(runCalendarSync, 15000).unref();
+  setTimeout(runCalendarSync, 1000).unref();
 }
+
+app.get('/api/google/permissions', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await scopedClient(req.token).from('calendar_permissions').select('organizer_id,created_at');
+    if (error) throw error;
+    const permissions = await Promise.all(data.map(async p => {
+      const result = await supabaseAdmin.auth.admin.getUserById(p.organizer_id);
+      if (result.error) throw result.error;
+      return { ...p, email: result.data.user.email };
+    }));
+    res.json({ permissions });
+  } catch (err) {
+    logError('Erro ao listar autorizações:', err);
+    res.status(503).json({ error: 'Não foi possível carregar as autorizações. Tente novamente mais tarde.' });
+  }
+});
+
+app.post('/api/google/permissions', requireAuth, addMemberRateLimit, async (req, res) => {
+  const email = typeof req.body.email === 'string' ? req.body.email.trim() : '';
+  if (!filterValidEmails([email]).length) return res.status(400).json({ error: 'Informe um email válido.' });
+  const db = scopedClient(req.token);
+  const account = await db.from('google_calendar_accounts').select('user_id').eq('user_id', req.user.id).maybeSingle();
+  if (account.error || !account.data) return res.status(409).json({ error: 'Conecte seu Google antes de autorizar alguém.' });
+  const { error } = await db.rpc('authorize_calendar_organizer', { p_email: email });
+  if (error) return res.status(400).json({ error: 'Não foi possível autorizar. Confira se esse email pertence a outra pessoa com conta no CAPTURA.' });
+  res.json({ ok: true });
+  runCalendarSync();
+});
+
+app.delete('/api/google/permissions/:organizerId', requireAuth, async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.organizerId)) return res.status(400).json({ error: 'Pessoa inválida.' });
+  const { error } = await scopedClient(req.token).from('calendar_permissions').delete()
+    .eq('recipient_id', req.user.id).eq('organizer_id', req.params.organizerId);
+  if (error) return res.status(500).json({ error: 'Não consegui revogar a autorização.' });
+  res.json({ ok: true });
+});
 
 async function driveCreateFolder(accessToken, name, parentId) {
   const body = { name, mimeType: 'application/vnd.google-apps.folder' };
@@ -613,7 +604,7 @@ app.post('/api/events', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'Não consegui salvar o evento. Tente de novo.' });
   }
   res.json({ id });
-  syncEventToGoogleCalendar(req, { id, owner_id: req.user.id, data: payload, google_calendar_event_id: null });
+  runCalendarSync();
   filterValidEmails(payload.member_emails).forEach((email) => addMemberByEmail(req, id, email));
 });
 
@@ -644,14 +635,13 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
     return res.status(404).json({ error: 'Evento não encontrado ou você não tem permissão pra editar.' });
   }
   res.json({ id: data.id });
-  syncEventToGoogleCalendar(req, { id: data.id, owner_id: data.owner_id, data: payload, google_calendar_event_id: data.google_calendar_event_id });
+  runCalendarSync();
   filterValidEmails(payload.member_emails).forEach((email) => addMemberByEmail(req, data.id, email));
 });
 
 // Exclui o evento de verdade (só o dono) — event_members e event_progress
-// cascateiam sozinhos via FK, não precisa apagar nada mais aqui. Não mexe no
-// evento do Google Calendar nem na pasta do Drive, se existirem (fica órfão
-// lá; fora de escopo).
+// cascateiam sozinhos via FK. Não mexe na
+// pasta do Drive. A fila preserva os IDs do Calendar para excluir suas cópias.
 app.delete('/api/events/:id', requireAuth, async (req, res) => {
   const db = scopedClient(req.token);
   const { data, error } = await db.from('events').delete().eq('id', req.params.id).select('id').maybeSingle();

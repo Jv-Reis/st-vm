@@ -943,6 +943,53 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   });
 
   let googleCalendarConnected = false;
+  const calendarPermissionStatus = document.getElementById('calendarPermissionStatus');
+  const calendarPermissionsList = document.getElementById('calendarPermissionsList');
+  async function refreshCalendarPermissions(){
+    calendarPermissionsList.replaceChildren();
+    try {
+      const token = await accessToken();
+      const resp = await fetch('/api/google/permissions', { headers: { Authorization: 'Bearer ' + token } });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error);
+      calendarPermissionsList.innerHTML = result.permissions.length ? result.permissions.map(p =>
+        '<div class="calendar-permission-row"><span>' + escapeHTML(p.email || p.organizer_id) + '</span>' +
+        '<button class="btn" type="button" data-revoke-organizer="' + escapeHTML(p.organizer_id) + '">Revogar</button></div>'
+      ).join('') : '<p>Nenhuma pessoa autorizada.</p>';
+    } catch(err){ calendarPermissionStatus.textContent = err.message || 'Não foi possível carregar as autorizações.'; }
+  }
+  document.getElementById('calendarPermissionForm').addEventListener('submit', async function(e){
+    e.preventDefault();
+    const button = document.getElementById('calendarAuthorizeBtn');
+    button.disabled = true;
+    calendarPermissionStatus.textContent = 'Salvando autorização…';
+    try {
+      const token = await accessToken();
+      const resp = await fetch('/api/google/permissions', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: document.getElementById('calendarOrganizerEmail').value.trim() }) });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error);
+      this.reset();
+      calendarPermissionStatus.textContent = 'Pessoa autorizada. Os eventos da equipe serão sincronizados automaticamente.';
+      await refreshCalendarPermissions();
+    } catch(err){ calendarPermissionStatus.textContent = err.message || 'Não foi possível autorizar.'; }
+    finally { button.disabled = false; }
+  });
+  calendarPermissionsList.addEventListener('click', async function(e){
+    const button = e.target.closest('[data-revoke-organizer]');
+    if(!button) return;
+    button.disabled = true;
+    try {
+      const token = await accessToken();
+      const resp = await fetch('/api/google/permissions/' + encodeURIComponent(button.dataset.revokeOrganizer), {
+        method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+      const result = await resp.json();
+      if(!resp.ok) throw new Error(result.error);
+      calendarPermissionStatus.textContent = 'Autorização revogada. Os eventos existentes permanecem na sua agenda.';
+      await refreshCalendarPermissions();
+    } catch(err){ calendarPermissionStatus.textContent = err.message || 'Não foi possível revogar.'; button.disabled = false; }
+  });
 
   async function refreshGoogleCalendarButton(){
     if(!currentUser){
@@ -1269,6 +1316,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     historyList.innerHTML = '<div class="history-empty">Carregando…</div>';
     showView('history');
     refreshGoogleCalendarButton();
+    calendarPermissionStatus.textContent = '';
+    refreshCalendarPermissions();
     if(new URLSearchParams(window.location.search).get('google') === 'conectado'){
       history.replaceState({}, '', '/historico');
       alert('Google conectado! A partir de agora, seus eventos com data sincronizam automaticamente com o Calendar, e você já pode criar estruturas de pastas no Drive.');

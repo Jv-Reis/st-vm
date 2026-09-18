@@ -137,12 +137,12 @@
     <div class="field-row">
       <span class="field-label">Convidados do Google Calendar (um email por linha, opcional)</span>
       <textarea class="field-textarea" id="previewCalendarGuests" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
-      <span class="field-hint">Só funciona se você tiver conectado o Google (Calendar + Drive) em "Meus eventos" — cada convidado recebe um convite por email quando você publicar/salvar.</span>
+      <span class="field-hint">Só funciona se você tiver conectado o Google (Calendar + Drive) em "Meus eventos" — cada convidado recebe um convite por email quando você publicar/salvar. Para membros que autorizaram a sincronização automática, use o campo de equipe abaixo.</span>
     </div>
     <div class="field-row">
       <span class="field-label">Membros da equipe (um email por linha, opcional)</span>
       <textarea class="field-textarea" id="previewMemberEmails" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
-      <span class="field-hint">Cada email vira membro na hora (se já tiver conta no CAPTURA) ou recebe um convite por email (se ainda não tiver). Dá pra promover/remover depois em "Gerenciar equipe".</span>
+      <span class="field-hint">Cada email vira membro na hora (se já tiver conta no CAPTURA) ou recebe um convite por email (se ainda não tiver). Quem conectar o Google e autorizar você em "Meus eventos" receberá os eventos automaticamente na agenda.</span>
     </div>
     <div class="field-row field-checkbox-row">
       <label class="field-checkbox-label">
@@ -220,6 +220,18 @@
       <button class="btn view-switch-btn" data-mode="calendar" type="button">📅 Calendário</button>
     </div>
     <div id="historyList"></div>
+    <section class="calendar-permissions" aria-labelledby="calendarPermissionsTitle">
+      <h2 id="calendarPermissionsTitle">Quem pode adicionar eventos à minha agenda</h2>
+      <p>Conecte seu Google e autorize uma pessoa pelo email da conta dela no CAPTURA. Quando ela incluir você na equipe de um evento com data, ele entrará na sua agenda sem aceitar convite por email. Eventos já existentes também serão sincronizados.</p>
+      <p>Alterações e exclusões feitas no CAPTURA atualizam sua cópia. Revogar a autorização interrompe a sincronização e mantém os eventos que já estão na agenda.</p>
+      <form id="calendarPermissionForm">
+        <label for="calendarOrganizerEmail">Email da pessoa que organiza os eventos</label>
+        <input class="field-input" id="calendarOrganizerEmail" type="email" maxlength="254" required placeholder="pessoa@exemplo.com">
+        <button class="btn" type="submit" id="calendarAuthorizeBtn">Autorizar essa pessoa</button>
+      </form>
+      <p id="calendarPermissionStatus" role="status" aria-live="polite"></p>
+      <div id="calendarPermissionsList"></div>
+    </section>
   </div>
 </div>
 

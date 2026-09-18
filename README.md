@@ -195,3 +195,22 @@ Também funciona **offline**: depois de abrir um evento pelo menos uma vez com i
 2. Convidar a equipe pra usar num evento real e coletar feedback antes de adicionar mais coisa.
 3. Google Calendar — hoje é só o link "adicionar à minha agenda" (cada um clica por si). Se sentir falta de convidar a equipe toda de uma vez, dá pra adicionar um campo de emails que pré-preenche os convidados na mesma URL, sem precisar de login com Google.
 4. Itens de manutenção: id estável em itens de missão, limpeza do log de progresso.
+
+## Agenda automática para membros autorizados
+
+Antes de publicar esta versão, execute `supabase-calendar-delegation.sql` uma vez no SQL Editor do Supabase. A migração cria autorizações com RLS, referências por participante, fila persistente e trava entre servidores; preserva os IDs antigos do Calendar. Requer as tabelas e migrações de membros já existentes. Não execute o servidor novo contra o banco antigo.
+
+Configure `APP_BASE_URL` com a URL pública do CAPTURA se estiver fora do Render. No Render, usa `RENDER_EXTERNAL_URL`; localmente, `http://localhost:3000` (ou PORT).
+
+1. Y entra em **Meus eventos**, conecta seu Google e, em **Quem pode adicionar eventos à minha agenda**, autoriza o email de login de X no CAPTURA. X precisa ter conta. O Google conectado pode ter email diferente do login.
+2. X inclui Y em **Membros da equipe** na prévia ou em **Gerenciar equipe**. Não precisa repetir Y em Convidados do Google Calendar. X não precisa conectar o próprio Google para sincronizar a agenda de Y.
+3. Eventos com data, inclusive os já existentes, são criados diretamente na agenda principal de Y, sem convite. O CAPTURA mantém cópias independentes: alterações e exclusões devem ser feitas no CAPTURA, que as propaga. Alterações feitas diretamente no Google não voltam para o CAPTURA.
+4. Y pode revogar X a qualquer momento. Isso interrompe novas escritas e mantém os eventos existentes. Desconectar o Google pausa todas as sincronizações; reconectar retoma as autorizações ainda existentes. Para interromper apenas um evento, Y pode removê-lo dos seus eventos salvos; a cópia é excluída enquanto conexão e autorização estiverem ativas.
+
+A fila é preenchida atomicamente por triggers para eventos, membros, autorizações e conexões Google. O servidor verifica a fila a cada 15 segundos enquanto está ativo; falhas são repetidas após 60 segundos, inclusive depois de reiniciar. IDs são persistidos antes das chamadas ao Google para evitar duplicatas após timeout. Excluir um evento ou retirar sua data remove as cópias autorizadas, inclusive a do dono. Revogação/desconexão impede limpeza até nova autorização/conexão. Chamadas já em andamento podem terminar antes de a revogação ser observada.
+
+Convidados convencionais continuam recebendo convites. Emails de membros autorizados (email CAPTURA e email Google, quando disponível) são retirados dessa lista na sincronização para evitar duplicação. Cópias antigas adicionadas manualmente pelo link do Calendar não são gerenciadas por essa integração.
+
+`calendar_sync_queue.last_error` registra falha pendente sem tokens ou conteúdo do evento. A tabela é exclusiva do servidor, assim como `calendar_copies`. O status da fila pode ser consultado pelo administrador no Supabase. Não existe confirmação visual por evento de que o Google terminou a sincronização.
+
+Testes: `npm test`. Os testes novos de autorização aplicam a migração dentro de uma transação com ROLLBACK quando ela ainda não está instalada, sem persistir mudanças. As chamadas Google são simuladas nos testes automatizados; a validação final com OAuth exige duas contas Google autorizadas.
