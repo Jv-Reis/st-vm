@@ -1,8 +1,9 @@
-const CACHE_NAME = 'captura-v9';
+const CACHE_NAME = 'captura-v10';
 const APP_SHELL = [
   '/',
   '/styles.css',
   '/app.js',
+  '/roteiro-draft.js',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png'

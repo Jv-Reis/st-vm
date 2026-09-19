@@ -1,3 +1,5 @@
+import { mergeGeneratedRoteiro, hasRoteiro } from './roteiro-draft.js';
+
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 }
@@ -74,9 +76,16 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const driveFolderAction = document.getElementById('driveFolderAction');
   const calendarLinkBtn = document.getElementById('calendarLinkBtn');
   const driveFolderLinkBtn = document.getElementById('driveFolderLinkBtn');
+  let roteiroSource = null;
+  let activeGeneration = null;
 
   const VIEWS = { loading: loadingView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView, members: membersView };
   function showView(name){
+    if(name !== 'import' && activeGeneration) {
+      activeGeneration.abort();
+      activeGeneration = null;
+    }
+    if(name === 'import') updateImportContext();
     Object.keys(VIEWS).forEach(key => { VIEWS[key].hidden = key !== name; });
     authStrip.hidden = (name === 'report' || name === 'loading');
     authStrip.classList.toggle('auth-strip--static', name === 'app');
@@ -170,34 +179,63 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   });
 
   quickCreateBtn.addEventListener('click', function(){
+    if(roteiroSource || activeGeneration) return;
     loadPreview({ event_title: '', phases: [], scenes: [], missions: [] });
   });
 
+  function updateImportContext(){
+    const continuing = !!roteiroSource;
+    document.getElementById('importContext').textContent = continuing ? 'Captura · roteiro do evento' : 'Captura · novo evento';
+    document.getElementById('importTitle').textContent = continuing ? 'Roteiro de ' + roteiroSource.event_title : 'Cole o roteiro do evento';
+    document.getElementById('cancelRoteiroBtn').hidden = !continuing;
+    quickCreateBtn.hidden = continuing;
+    quickCreateBtn.disabled = !!activeGeneration;
+    generateBtn.disabled = !!activeGeneration;
+    exampleBtn.disabled = !!activeGeneration;
+    generateBtn.textContent = activeGeneration ? 'Gerando…' : 'Gerar checklist';
+  }
+
+  document.getElementById('cancelRoteiroBtn').addEventListener('click', function(){
+    // showView cancela a requisição; nenhuma alteração é aplicada ao rascunho.
+    showView('preview');
+    roteiroSource = null;
+  });
+
   async function runGenerate(text){
+    if(activeGeneration) return;
+    if(hasRoteiro(roteiroSource) && !confirm('Substituir o roteiro atual? As fases, cenas e missões serão substituídas, e o progresso anterior não será transferido para o novo roteiro. Os dados do evento serão mantidos. A mudança só será publicada ao salvar.')) return;
+    const source = roteiroSource;
+    const controller = new AbortController();
+    activeGeneration = controller;
     importError.hidden = true;
-    generateBtn.disabled = true;
-    exampleBtn.disabled = true;
-    generateBtn.textContent = 'Gerando…';
+    updateImportContext();
     try {
       const token = await accessToken();
+      if(activeGeneration !== controller) return;
       if(!token) throw new Error('Sessão expirada. Faça login de novo.');
       const resp = await fetch('/api/parse-roteiro', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ text }),
+        signal: controller.signal
       });
       const data = await resp.json();
       if(!resp.ok){
         throw new Error(data.error || 'Erro ao gerar o checklist.');
       }
-      loadPreview(data);
+      if(activeGeneration !== controller) return;
+      if(!Array.isArray(data.phases) || !Array.isArray(data.scenes) || !Array.isArray(data.missions)) {
+        throw new Error('A geração retornou um roteiro inválido. Tente novamente.');
+      }
+      loadPreview(data, source);
+      roteiroSource = null;
     } catch(err){
+      if(controller.signal.aborted || activeGeneration !== controller) return;
       importError.textContent = err.message || 'Erro inesperado ao gerar o checklist.';
       importError.hidden = false;
     } finally {
-      generateBtn.disabled = false;
-      exampleBtn.disabled = false;
-      generateBtn.textContent = 'Gerar checklist';
+      if(activeGeneration === controller) activeGeneration = null;
+      updateImportContext();
     }
   }
 
@@ -210,7 +248,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       return;
     }
     if(!currentUser){
-      localStorage.setItem(PENDING_ROTEIRO_KEY, text);
+      localStorage.setItem(PENDING_ROTEIRO_KEY, JSON.stringify({ text, draft: roteiroSource, editingEventId }));
       showView('login');
       loginStatus.textContent = 'Faça login pra gerar o checklist — seu roteiro fica salvo e a geração continua assim que você entrar.';
       loginStatus.hidden = false;
@@ -260,14 +298,15 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     };
   }
 
-  function loadPreview(data){
-    draft = normalizeDraft(data);
+  function loadPreview(data, existing = null){
+    draft = mergeGeneratedRoteiro(existing, normalizeDraft(data));
     publishBtn.textContent = editingEventId ? 'Salvar alterações' : 'Publicar checklist';
     renderPreviewAll();
     showView('preview');
   }
 
   function renderPreviewAll(){
+    document.getElementById('previewBackBtn').textContent = hasRoteiro(draft) ? 'Substituir roteiro' : 'Adicionar roteiro';
     document.getElementById('previewEventTitle').value = draft.event_title;
     previewEventDate.value = draft.event_date || '';
     previewEventEndDate.value = draft.event_end_date || '';
@@ -504,6 +543,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   });
 
   document.getElementById('previewBackBtn').addEventListener('click', function(){
+    roteiroSource = draft;
+    importError.hidden = true;
     showView('import');
   });
 
@@ -655,6 +696,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   function backToImport(){
+    roteiroSource = null;
+    draft = null;
     showView('import');
     importError.hidden = true;
     hideEventLink();
@@ -1285,6 +1328,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   async function loadEventForEdit(id){
+    roteiroSource = null;
     try {
       const resp = await fetch('/api/events/' + id);
       const data = await resp.json();
@@ -1883,9 +1927,20 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const pending = localStorage.getItem(PENDING_ROTEIRO_KEY);
     if(!currentUser || !pending) return false;
     localStorage.removeItem(PENDING_ROTEIRO_KEY);
+    let saved;
+    try { saved = JSON.parse(pending); } catch { saved = null; }
+    const wrapped = saved && typeof saved.text === 'string';
+    roteiroSource = wrapped ? saved.draft || null : null;
+    draft = roteiroSource;
+    editingEventId = wrapped ? saved.editingEventId || null : null;
+    const text = wrapped ? saved.text : pending;
+    if(draft) {
+      publishBtn.textContent = editingEventId ? 'Salvar alterações' : 'Publicar checklist';
+      renderPreviewAll();
+    }
     showView('import');
-    roteiroInput.value = pending;
-    runGenerate(pending);
+    roteiroInput.value = text;
+    runGenerate(text);
     return true;
   }
 
@@ -1959,8 +2014,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   });
 
   historyNewBtn.addEventListener('click', function(){
-    history.pushState({}, '', '/');
-    showView('import');
+    backToImport();
   });
 
   // ---------- roteamento ----------
@@ -1973,6 +2027,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if((m = path.match(/^\/e\/([a-zA-Z0-9-]+)\/editar$/))){ loadEventForEdit(m[1]); return; }
     if(path === '/historico'){ showHistoryView(); return; }
     if((m = path.match(/^\/e\/([a-zA-Z0-9-]+)$/))){ loadEventFromUrl(m[1]); return; }
+    roteiroSource = null;
+    draft = null;
+    editingEventId = null;
     showView('import');
   }
 

@@ -82,14 +82,15 @@
       </div>
     </div>
     <div class="import-card">
-      <span class="import-eyebrow">Captura · novo evento</span>
-      <h2 class="import-title">Cole o roteiro do evento</h2>
+      <span class="import-eyebrow" id="importContext">Captura · novo evento</span>
+      <h2 class="import-title" id="importTitle">Cole o roteiro do evento</h2>
       <p class="import-sub">Escreva do jeito que quiser — com títulos, bullets, ou só corrido — em qualquer editor, e cole o texto aqui. A IA organiza em fases e cenas prontas pra checklist ao vivo em campo.</p>
       <textarea class="import-textarea" id="roteiroInput" placeholder="Cole aqui o roteiro do evento..."></textarea>
       <div class="import-actions">
         <button class="btn btn-primary" id="generateBtn" type="button">Gerar checklist</button>
         <button class="btn" id="exampleBtn" type="button">Usar roteiro de exemplo</button>
         <button class="btn" id="quickCreateBtn" type="button">Criar evento sem roteiro (reservar a data)</button>
+        <button class="btn" id="cancelRoteiroBtn" type="button" hidden>Voltar à revisão sem alterar</button>
       </div>
       <div class="import-error" id="importError" hidden></div>
     </div>
@@ -105,7 +106,7 @@
         <div class="preview-heading">Confira e ajuste o roteiro gerado</div>
       </div>
       <div style="display:flex; gap:10px;">
-        <button class="btn" id="previewBackBtn" type="button">← Colar outro roteiro</button>
+        <button class="btn" id="previewBackBtn" type="button">Adicionar roteiro</button>
         <button class="btn btn-primary" id="publishBtn" type="button">Publicar checklist</button>
       </div>
     </div>
@@ -373,6 +374,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/app.js"></script>
+<script type="module" src="/app.js"></script>
 </body>
 </html>

@@ -46,7 +46,7 @@ Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em 
 - **"Meus eventos"** (`/historico`) lista tudo que você já publicou, com link pra ver ou editar cada um.
 - Editar um evento **atualiza o mesmo link** (`/e/:id`) — a equipe que já tem o link não precisa trocar nada.
 - Eventos publicados antes dessa mudança continuam funcionando normalmente pra quem só usa o link (ver, marcar "Gravar"), mas não aparecem no histórico de ninguém nem podem ser editados (não têm dono).
-- **"Criar evento sem roteiro (reservar a data)"**, na tela inicial, pula direto pra prévia sem gerar nada — dá pra preencher só nome/data/local e publicar (confirma antes, já que não tem cena nenhuma). O evento fica com o link e o Google Calendar funcionando na hora; aparece no histórico como "Rascunho, sem roteiro ainda". Depois, em "Editar" → "← Colar outro roteiro", dá pra colar o texto e gerar as cenas via IA — atualiza o mesmo evento (mesmo link), não cria um novo.
+- **"Criar evento sem roteiro (reservar a data)"**, na tela inicial, pula direto pra prévia sem gerar nada — dá pra preencher só nome/data/local e publicar (confirma antes, já que não tem cena nenhuma). O evento fica com o link e o Google Calendar funcionando na hora; aparece no histórico como "Rascunho, sem roteiro ainda". Depois, em "Editar" → "Adicionar roteiro", dá pra colar o texto e gerar as cenas via IA — atualiza o mesmo evento (mesmo link), não cria um novo.
 - **"💾 Salvar nos meus eventos"**, na checklist ao vivo, aparece pra quem está logado mas não é dono do evento (quem recebeu o link) — salva o evento no histórico dela também, sem virar dono nem poder editar. Clicar de novo remove. No histórico, esses eventos aparecem marcados como "salvo, não é seu" e sem o botão "Editar".
 - **"Meus eventos"** tem 3 modos de visualização (☰ Lista / ▦ Bloco / 📅 Calendário), lembrados entre visitas. No modo Calendário, cada evento aparece no dia da sua data de início; eventos sem data (rascunhos, ou criados manualmente sem data) ficam numa lista separada abaixo.
 - **"Novos membros já entram podendo editar"**, na prévia (tanto ao criar quanto ao editar um evento existente), controla só o padrão de quem salvar o evento **a partir de agora** (ligado = já nasce podendo editar; desligado, o padrão = só visualiza até o dono promover). Não muda quem já salvou antes.
@@ -214,3 +214,11 @@ Convidados convencionais continuam recebendo convites. Emails de membros autoriz
 `calendar_sync_queue.last_error` registra falha pendente sem tokens ou conteúdo do evento. A tabela é exclusiva do servidor, assim como `calendar_copies`. O status da fila pode ser consultado pelo administrador no Supabase. Não existe confirmação visual por evento de que o Google terminou a sincronização.
 
 Testes: `npm test`. Os testes novos de autorização aplicam a migração dentro de uma transação com ROLLBACK quando ela ainda não está instalada, sem persistir mudanças. As chamadas Google são simuladas nos testes automatizados; a validação final com OAuth exige duas contas Google autorizadas.
+
+## Adicionar ou substituir o roteiro de um evento
+
+Em **Meus eventos → Editar → Adicionar roteiro**, cole o texto, gere a checklist e clique em **Salvar alterações**. O evento mantém o mesmo link, título, datas, local, observações, equipe, convidados, permissões e pasta do Drive. Só fases, cenas e missões são substituídas; a geração não grava nada no servidor antes de salvar.
+
+Quando já existe conteúdo, o botão mostra **Substituir roteiro** e pede confirmação antes da geração. As cenas e missões novas recebem IDs próprios: o progresso anterior não é transferido. Em caso de erro, o texto e o rascunho permanecem para nova tentativa. **Voltar à revisão sem alterar** cancela a geração em andamento e mantém o roteiro anterior. Criar um evento novo continua sendo um fluxo separado.
+
+Essa correção não exige migração de banco. O service worker inclui o módulo de edição para manter o carregamento offline. `tests/roteiro-edit.test.js` executa os handlers reais do app com DOM, autenticação e HTTP simulados, incluindo falha, cancelamento, retorno do login e atualização do mesmo evento.
