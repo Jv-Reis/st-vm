@@ -155,11 +155,11 @@ Contas que já existiam por magic link são automaticamente ligadas à mesma con
 
 Sem configurar nada, o botão "📅 Google Calendar" (link simples) continua funcionando normalmente. A parte de **"🔗 Conectar Google (Calendar + Drive)"** (sincronização automática do Calendar, que edita em vez de duplicar, + criação de estrutura de pastas no Drive) só liga depois de configurar um projeto no Google Cloud — segue o mesmo espírito do SMTP do Gmail: precisa da sua conta Google, ninguém faz isso por você. É **uma conexão só** cobrindo as duas coisas — não precisa conectar duas vezes.
 
-Como esse projeto do Google Cloud continua em modo **Testing** (a verificação de marca pra publicar esbarrou numa limitação do domínio compartilhado do Render — ver nota mais abaixo), só quem estiver na lista de **usuários de teste** consegue conectar. Em "Meus eventos", quem ainda não conectou vê um aviso amarelo pedindo pra solicitar acesso a quem administra o projeto (`jreis1112@gmail.com` hoje) antes de tentar — sem isso, o Google recusa com uma tela de erro.
+✅ **Publicado** (Público-alvo → "Em produção") — não é mais preciso estar numa lista de testador pra conectar. Como a verificação completa de marca ainda não foi feita (esbarra numa limitação do domínio compartilhado do Render — ver nota mais abaixo), quem conectar vê a tela padrão do Google de "app não verificado" antes de autorizar (clica em "Avançado" → "Acessar mesmo assim" e segue normal). Limite de 100 contas usando escopos sensíveis não aprovados enquanto não sair desse estado — verificação completa exige domínio próprio.
 
 **1. Criar as credenciais no Google Cloud**
 - Acesse [console.cloud.google.com](https://console.cloud.google.com/), crie (ou reaproveite) um projeto, e ative a **Google Calendar API** e a **Google Drive API** (menu "APIs e serviços" → "Biblioteca", uma de cada vez).
-- Em "Tela de permissão OAuth": tipo **Externo**, deixe em modo **"Testing"** e adicione os emails da equipe como **testadores** — evita o processo de revisão do Google (só é obrigatório pra apps públicos com muita gente).
+- Em "Tela de permissão OAuth": tipo **Externo**. Em "Público-alvo" → "Publicar app", pra qualquer conta Google conseguir conectar (sem isso, fica restrito a quem for adicionado manualmente como testador).
 - Em "Credenciais" → "Criar credenciais" → **ID do cliente OAuth**, tipo **Aplicativo Web**. Em "URIs de redirecionamento autorizados", adicione:
   - `http://localhost:3000/api/google/oauth/callback` (pra testar local)
   - `https://captura-checklist.onrender.com/api/google/oauth/callback` (produção)
@@ -191,10 +191,12 @@ Também funciona **offline**: depois de abrir um evento pelo menos uma vez com i
 
 ## Próximos passos
 
-1. Testar num celular de verdade — a experiência mobile já foi validada por emulação (375×812, overflow, alvos de toque nos botões principais) e alguns problemas foram corrigidos, mas emulação não é 100% igual a testar no aparelho/rede/condições reais de um evento.
-2. Convidar a equipe pra usar num evento real e coletar feedback antes de adicionar mais coisa.
-3. Google Calendar — hoje é só o link "adicionar à minha agenda" (cada um clica por si). Se sentir falta de convidar a equipe toda de uma vez, dá pra adicionar um campo de emails que pré-preenche os convidados na mesma URL, sem precisar de login com Google.
-4. Itens de manutenção: id estável em itens de missão, limpeza do log de progresso.
+✅ Já validado em campo — vários eventos reais publicados e usados de ponta a ponta (casamentos, aniversário de 15 anos, debutante, evento corporativo), por mais de uma pessoa além de quem criou o projeto, incluindo colaboração em equipe (mais de um membro atualizando progresso no mesmo evento). Os itens de "testar num celular de verdade" e "convidar a equipe pra usar num evento real" que estavam aqui já aconteceram.
+
+1. Landing page de divulgação — feita em projeto separado (`captura-landing`, React/Vite/Tailwind), deploy ainda pendente (ver plano de ir pro Vercel + domínio próprio).
+2. Google Cloud publicado (✅ feito) — falta só a verificação completa de marca (exige domínio próprio) pra tirar a tela de "app não verificado" e o limite de 100 contas.
+3. Definir modelo de monetização (ver discussão na sessão do Claude Code — por evento tende a fazer mais sentido que assinatura, dado que o custo variável principal é a geração via IA).
+4. Convite de Calendar pra quem não tem conta no CAPTURA (convidado externo de verdade, não membro da equipe) continua sendo só o link manual — a sincronização automática por autorização (ver seção abaixo) resolve o caso de membros da equipe, mas não esse.
 
 ## Agenda automática para membros autorizados
 
@@ -214,6 +216,7 @@ Convidados convencionais continuam recebendo convites. Emails de membros autoriz
 `calendar_sync_queue.last_error` registra falha pendente sem tokens ou conteúdo do evento. A tabela é exclusiva do servidor, assim como `calendar_copies`. O status da fila pode ser consultado pelo administrador no Supabase. Não existe confirmação visual por evento de que o Google terminou a sincronização.
 
 Testes: `npm test`. Os testes novos de autorização aplicam a migração dentro de uma transação com ROLLBACK quando ela ainda não está instalada, sem persistir mudanças. As chamadas Google são simuladas nos testes automatizados; a validação final com OAuth exige duas contas Google autorizadas.
+
 
 ## Adicionar ou substituir o roteiro de um evento
 
