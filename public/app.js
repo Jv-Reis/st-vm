@@ -106,6 +106,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let currentOwnerId = null;
   let currentMemberCanEdit = false;
   let editingEventId = null;
+  let generatedInPreview = false;
   let eventSaved = false;
   let progressStream = null;
   let streamHadError = false;
@@ -299,13 +300,26 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   function loadPreview(data, existing = null){
+    generatedInPreview = hasRoteiro(data);
     draft = mergeGeneratedRoteiro(existing, normalizeDraft(data));
-    publishBtn.textContent = editingEventId ? 'Salvar alterações' : 'Publicar checklist';
+    updatePreviewContext();
     renderPreviewAll();
     showView('preview');
   }
 
+  function updatePreviewContext(){
+    const content = hasRoteiro(draft);
+    document.getElementById('previewEyebrow').textContent = editingEventId ? 'Revisão · evento existente' : 'Revisão · novo evento';
+    document.getElementById('previewHeading').textContent = !content
+      ? (editingEventId ? 'Atualize os dados do evento' : 'Reserve a data do evento')
+      : (generatedInPreview
+        ? (editingEventId ? 'Revise o roteiro antes de salvar' : 'Revise o roteiro antes de publicar')
+        : 'Edite os dados e o roteiro');
+    publishBtn.textContent = editingEventId ? 'Salvar alterações' : (content ? 'Publicar checklist' : 'Criar evento');
+  }
+
   function renderPreviewAll(){
+    updatePreviewContext();
     document.getElementById('previewBackBtn').textContent = hasRoteiro(draft) ? 'Substituir roteiro' : 'Adicionar roteiro';
     document.getElementById('previewEventTitle').value = draft.event_title;
     previewEventDate.value = draft.event_date || '';
@@ -337,24 +351,24 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
             '<div class="preview-scene-top">'+
               '<span class="field-label" style="margin:0;">Cena '+(localIdx+1)+'</span>'+
               '<div class="preview-scene-actions">'+
-                '<button type="button" class="icon-btn" data-action="move-scene-up" data-idx="'+i+'" '+(localIdx===0?'disabled':'')+'>↑</button>'+
-                '<button type="button" class="icon-btn" data-action="move-scene-down" data-idx="'+i+'" '+(localIdx===scenesInPhase.length-1?'disabled':'')+'>↓</button>'+
-                '<button type="button" class="icon-btn danger" data-action="remove-scene" data-idx="'+i+'">✕</button>'+
+                '<button type="button" class="icon-btn" aria-label="Mover cena para cima" data-action="move-scene-up" data-idx="'+i+'" '+(localIdx===0?'disabled':'')+'>↑</button>'+
+                '<button type="button" class="icon-btn" aria-label="Mover cena para baixo" data-action="move-scene-down" data-idx="'+i+'" '+(localIdx===scenesInPhase.length-1?'disabled':'')+'>↓</button>'+
+                '<button type="button" class="icon-btn danger" aria-label="Remover cena" data-action="remove-scene" data-idx="'+i+'">✕</button>'+
               '</div>'+
             '</div>'+
             '<div class="field-grid field-row">'+
-              '<div><span class="field-label">Título</span><input class="field-input" data-scope="scene" data-idx="'+i+'" data-field="title" value="'+escapeAttr(s.title)+'"></div>'+
-              '<div><span class="field-label">Fase</span><select class="field-select" data-scope="scene" data-idx="'+i+'" data-field="phase">'+scenePhaseOptions+'</select></div>'+
+              '<div><label class="field-label" for="edit-scene-'+i+'-title">Título</label><input id="edit-scene-'+i+'-title" class="field-input" data-scope="scene" data-idx="'+i+'" data-field="title" value="'+escapeAttr(s.title)+'"></div>'+
+              '<div><label class="field-label" for="edit-scene-'+i+'-phase">Fase</label><select id="edit-scene-'+i+'-phase" class="field-select" data-scope="scene" data-idx="'+i+'" data-field="phase">'+scenePhaseOptions+'</select></div>'+
             '</div>'+
             '<div class="field-grid field-row">'+
-              '<div><span class="field-label">Ícone</span><select class="field-select" data-scope="scene" data-idx="'+i+'" data-field="icon">'+iconOptions(s.icon)+'</select></div>'+
-              '<div><span class="field-label">Formato</span><input class="field-input" data-scope="scene" data-idx="'+i+'" data-field="formato" value="'+escapeAttr(s.formato)+'"></div>'+
+              '<div><label class="field-label" for="edit-scene-'+i+'-icon">Ícone</label><select id="edit-scene-'+i+'-icon" class="field-select" data-scope="scene" data-idx="'+i+'" data-field="icon">'+iconOptions(s.icon)+'</select></div>'+
+              '<div><label class="field-label" for="edit-scene-'+i+'-formato">Formato</label><input id="edit-scene-'+i+'-formato" class="field-input" data-scope="scene" data-idx="'+i+'" data-field="formato" value="'+escapeAttr(s.formato)+'"></div>'+
             '</div>'+
-            '<div class="field-row"><span class="field-label">Captura (uma por linha)</span><textarea class="field-textarea" data-scope="scene" data-idx="'+i+'" data-field="capture" data-list="true">'+escapeHTML((s.capture||[]).join('\n'))+'</textarea></div>'+
-            '<div class="field-row"><span class="field-label">Fala / texto sugerido</span><textarea class="field-textarea" style="min-height:44px;" data-scope="scene" data-idx="'+i+'" data-field="speech">'+escapeHTML(s.speech||'')+'</textarea></div>'+
+            '<div class="field-row"><label class="field-label" for="edit-scene-'+i+'-capture">Captura (uma por linha)</label><textarea id="edit-scene-'+i+'-capture" class="field-textarea" data-scope="scene" data-idx="'+i+'" data-field="capture" data-list="true">'+escapeHTML((s.capture||[]).join('\n'))+'</textarea></div>'+
+            '<div class="field-row"><label class="field-label" for="edit-scene-'+i+'-speech">Fala / texto sugerido</label><textarea id="edit-scene-'+i+'-speech" class="field-textarea" style="min-height:44px;" data-scope="scene" data-idx="'+i+'" data-field="speech">'+escapeHTML(s.speech||'')+'</textarea></div>'+
             '<div class="field-grid field-row">'+
-              '<div><span class="field-label">Pode (uma por linha)</span><textarea class="field-textarea" data-scope="scene" data-idx="'+i+'" data-field="can" data-list="true">'+escapeHTML((s.can||[]).join('\n'))+'</textarea></div>'+
-              '<div><span class="field-label">Não pode (uma por linha)</span><textarea class="field-textarea" data-scope="scene" data-idx="'+i+'" data-field="cannot" data-list="true">'+escapeHTML((s.cannot||[]).join('\n'))+'</textarea></div>'+
+              '<div><label class="field-label" for="edit-scene-'+i+'-can">Pode (uma por linha)</label><textarea id="edit-scene-'+i+'-can" class="field-textarea" data-scope="scene" data-idx="'+i+'" data-field="can" data-list="true">'+escapeHTML((s.can||[]).join('\n'))+'</textarea></div>'+
+              '<div><label class="field-label" for="edit-scene-'+i+'-cannot">Não pode (uma por linha)</label><textarea id="edit-scene-'+i+'-cannot" class="field-textarea" data-scope="scene" data-idx="'+i+'" data-field="cannot" data-list="true">'+escapeHTML((s.cannot||[]).join('\n'))+'</textarea></div>'+
             '</div>'+
           '</div>'
         );
@@ -363,12 +377,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       return (
         '<div class="preview-phase-block">'+
           '<div class="preview-phase-head">'+
-            '<div class="field-row"><span class="field-label">Fase</span><input class="field-input" data-scope="phase" data-idx="'+pIdx+'" data-field="label" value="'+escapeAttr(phase.label)+'"></div>'+
-            '<div class="field-row icon-col"><span class="field-label">Ícone</span><select class="field-select" data-scope="phase" data-idx="'+pIdx+'" data-field="icon">'+iconOptions(phase.icon)+'</select></div>'+
+            '<div class="field-row"><label class="field-label" for="edit-phase-'+pIdx+'-label">Fase</label><input id="edit-phase-'+pIdx+'-label" class="field-input" data-scope="phase" data-idx="'+pIdx+'" data-field="label" value="'+escapeAttr(phase.label)+'"></div>'+
+            '<div class="field-row icon-col"><label class="field-label" for="edit-phase-'+pIdx+'-icon">Ícone</label><select id="edit-phase-'+pIdx+'-icon" class="field-select" data-scope="phase" data-idx="'+pIdx+'" data-field="icon">'+iconOptions(phase.icon)+'</select></div>'+
             '<div class="preview-phase-actions">'+
-              '<button type="button" class="icon-btn" data-action="move-phase-up" data-idx="'+pIdx+'" '+(pIdx===0?'disabled':'')+'>↑</button>'+
-              '<button type="button" class="icon-btn" data-action="move-phase-down" data-idx="'+pIdx+'" '+(pIdx===draft.phases.length-1?'disabled':'')+'>↓</button>'+
-              '<button type="button" class="icon-btn danger" data-action="remove-phase" data-idx="'+pIdx+'">✕</button>'+
+              '<button type="button" class="icon-btn" aria-label="Mover fase para cima" data-action="move-phase-up" data-idx="'+pIdx+'" '+(pIdx===0?'disabled':'')+'>↑</button>'+
+              '<button type="button" class="icon-btn" aria-label="Mover fase para baixo" data-action="move-phase-down" data-idx="'+pIdx+'" '+(pIdx===draft.phases.length-1?'disabled':'')+'>↓</button>'+
+              '<button type="button" class="icon-btn danger" aria-label="Remover fase" data-action="remove-phase" data-idx="'+pIdx+'">✕</button>'+
             '</div>'+
           '</div>'+
           sceneCards+
@@ -381,17 +395,18 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   function renderPreviewMissions(){
+    updatePreviewContext();
     previewMissionsContainer.innerHTML = draft.missions.map((cat, cIdx) => (
       '<div class="preview-mission-block">'+
         '<div class="preview-scene-top">'+
           '<span class="field-label" style="margin:0;">Categoria</span>'+
-          '<button type="button" class="icon-btn danger" data-action="remove-mission-cat" data-idx="'+cIdx+'">✕</button>'+
+          '<button type="button" class="icon-btn danger" aria-label="Remover categoria de missão" data-action="remove-mission-cat" data-idx="'+cIdx+'">✕</button>'+
         '</div>'+
         '<div class="field-grid field-row">'+
-          '<div><span class="field-label">Nome</span><input class="field-input" data-scope="missionCat" data-idx="'+cIdx+'" data-field="label" value="'+escapeAttr(cat.label)+'"></div>'+
-          '<div><span class="field-label">Emoji</span><input class="field-input" data-scope="missionCat" data-idx="'+cIdx+'" data-field="emoji" value="'+escapeAttr(cat.emoji||'')+'"></div>'+
+          '<div><label class="field-label" for="edit-missionCat-'+cIdx+'-label">Nome</label><input id="edit-missionCat-'+cIdx+'-label" class="field-input" data-scope="missionCat" data-idx="'+cIdx+'" data-field="label" value="'+escapeAttr(cat.label)+'"></div>'+
+          '<div><label class="field-label" for="edit-missionCat-'+cIdx+'-emoji">Emoji</label><input id="edit-missionCat-'+cIdx+'-emoji" class="field-input" data-scope="missionCat" data-idx="'+cIdx+'" data-field="emoji" value="'+escapeAttr(cat.emoji||'')+'"></div>'+
         '</div>'+
-        '<div class="field-row"><span class="field-label">Itens (um por linha)</span><textarea class="field-textarea" data-scope="missionItems" data-idx="'+cIdx+'" data-field="items" data-list="true">'+escapeHTML((cat.items||[]).map(function(it){ return it.text; }).join('\n'))+'</textarea></div>'+
+        '<div class="field-row"><label class="field-label" for="edit-missionItems-'+cIdx+'-items">Itens (um por linha)</label><textarea id="edit-missionItems-'+cIdx+'-items" class="field-textarea" data-scope="missionItems" data-idx="'+cIdx+'" data-field="items" data-list="true">'+escapeHTML((cat.items||[]).map(function(it){ return it.text; }).join('\n'))+'</textarea></div>'+
       '</div>'
     )).join('');
   }
@@ -551,12 +566,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const publishBtn = document.getElementById('publishBtn');
   publishBtn.addEventListener('click', async function(){
     draft.event_title = document.getElementById('previewEventTitle').value.trim() || 'Evento sem nome';
-    if(!draft.scenes.length && !confirm('Publicar sem nenhuma cena? Você pode colar/gerar o roteiro depois, no mesmo link.')){
+    if(!draft.scenes.length && !confirm('Salvar o evento sem roteiro? Você poderá adicionar as fases e cenas depois, mantendo o mesmo link.')){
       return;
     }
 
     if(!currentUser){
-      localStorage.setItem(PENDING_DRAFT_KEY, JSON.stringify({ draft, editingEventId }));
+      localStorage.setItem(PENDING_DRAFT_KEY, JSON.stringify({ draft, editingEventId, generatedInPreview }));
       showView('login');
       loginStatus.textContent = 'Faça login pra publicar — seu roteiro fica salvo e volta pra revisão assim que você entrar.';
       loginStatus.hidden = false;
@@ -591,7 +606,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       alert('Não consegui salvar (' + (err.message || 'erro desconhecido') + ').');
     } finally {
       publishBtn.disabled = false;
-      publishBtn.textContent = 'Publicar checklist';
+      updatePreviewContext();
     }
   });
 
@@ -1328,6 +1343,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   async function loadEventForEdit(id){
+    generatedInPreview = false;
     roteiroSource = null;
     try {
       const resp = await fetch('/api/events/' + id);
@@ -1935,7 +1951,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     editingEventId = wrapped ? saved.editingEventId || null : null;
     const text = wrapped ? saved.text : pending;
     if(draft) {
-      publishBtn.textContent = editingEventId ? 'Salvar alterações' : 'Publicar checklist';
+      updatePreviewContext();
       renderPreviewAll();
     }
     showView('import');
@@ -1959,7 +1975,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const hasWrapper = parsed && typeof parsed === 'object' && 'draft' in parsed;
     draft = hasWrapper ? parsed.draft : parsed;
     editingEventId = hasWrapper ? (parsed.editingEventId || null) : null;
-    publishBtn.textContent = editingEventId ? 'Salvar alterações' : 'Publicar checklist';
+    generatedInPreview = !!parsed.generatedInPreview;
+    updatePreviewContext();
     renderPreviewAll();
     showView('preview');
     return true;

@@ -187,3 +187,25 @@ test('Merge mantém pasta vazia intencional e renova IDs de missões sem alterar
   assert.equal(result.missions[0].key, 'm1');
   assert.deepEqual(old.scenes, []);
 });
+
+
+test('Títulos e ações acompanham reserva, edição e geração', async () => {
+  const fresh = await browser({ path: '/' });
+  await fresh.click('quickCreateBtn');
+  assert.equal(fresh.element('previewHeading').textContent, 'Reserve a data do evento');
+  assert.equal(fresh.element('publishBtn').textContent, 'Criar evento');
+  const edit = await browser();
+  assert.equal(edit.element('previewHeading').textContent, 'Atualize os dados do evento');
+  assert.equal(edit.element('publishBtn').textContent, 'Salvar alterações');
+  await edit.click('previewBackBtn');
+  edit.element('roteiroInput').value = 'Um roteiro completo para gerar as cenas do evento.';
+  await edit.click('generateBtn');
+  assert.equal(edit.element('previewHeading').textContent, 'Revise o roteiro antes de salvar');
+  const existing = await browser({ event: { ...reserved, ...generated } });
+  assert.equal(existing.element('previewHeading').textContent, 'Edite os dados e o roteiro');
+  const create = await browser({ path: '/' });
+  create.element('roteiroInput').value = 'Um roteiro completo para gerar um evento novo.';
+  await create.click('generateBtn');
+  assert.equal(create.element('previewHeading').textContent, 'Revise o roteiro antes de publicar');
+  assert.equal(create.element('publishBtn').textContent, 'Publicar checklist');
+});

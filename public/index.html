@@ -73,23 +73,20 @@
         </svg>
         <span class="hero-brand-name">CAPTURA</span>
       </div>
-      <h1 class="hero-title">Do roteiro bagunçado à checklist de campo, em segundos</h1>
-      <p class="hero-sub">Feito pra equipes de cobertura de casamento e eventos: cole o roteiro que você já escreveu do seu jeito, a IA organiza em fases e cenas, e a equipe inteira acompanha ao vivo — quem já gravou o quê, sem se perder em campo.</p>
-      <div class="hero-steps">
-        <div class="hero-step"><span class="hero-step-num">1</span><div><strong>Cole o roteiro</strong>do jeito que você já escreve, sem formato fixo</div></div>
-        <div class="hero-step"><span class="hero-step-num">2</span><div><strong>A IA organiza</strong>fases, cenas, o que capturar, fala sugerida</div></div>
-        <div class="hero-step"><span class="hero-step-num">3</span><div><strong>Equipe acompanha ao vivo</strong>link compartilhável, progresso sincronizado</div></div>
-      </div>
+      <h1 class="hero-title">Seu roteiro pronto para a cobertura</h1>
+      <p class="hero-sub">Organize o roteiro em cenas e acompanhe a cobertura com sua equipe.</p>
+      <p class="hero-steps">Cole o roteiro <span aria-hidden="true">→</span> Revise <span aria-hidden="true">→</span> Compartilhe</p>
     </div>
     <div class="import-card">
       <span class="import-eyebrow" id="importContext">Captura · novo evento</span>
       <h2 class="import-title" id="importTitle">Cole o roteiro do evento</h2>
-      <p class="import-sub">Escreva do jeito que quiser — com títulos, bullets, ou só corrido — em qualquer editor, e cole o texto aqui. A IA organiza em fases e cenas prontas pra checklist ao vivo em campo.</p>
-      <textarea class="import-textarea" id="roteiroInput" placeholder="Cole aqui o roteiro do evento..."></textarea>
+      <p class="import-sub" id="roteiroHint">Cole seu texto. A IA organiza as fases e cenas para você revisar.</p>
+      <label class="sr-only" for="roteiroInput">Roteiro do evento</label>
+      <textarea aria-describedby="roteiroHint" class="import-textarea" id="roteiroInput" placeholder="Cole aqui o roteiro do evento..."></textarea>
       <div class="import-actions">
         <button class="btn btn-primary" id="generateBtn" type="button">Gerar checklist</button>
-        <button class="btn" id="exampleBtn" type="button">Usar roteiro de exemplo</button>
-        <button class="btn" id="quickCreateBtn" type="button">Criar evento sem roteiro (reservar a data)</button>
+        <button class="btn" id="quickCreateBtn" type="button">Reservar uma data</button>
+        <button class="btn btn-secondary" id="exampleBtn" type="button">Usar exemplo</button>
         <button class="btn" id="cancelRoteiroBtn" type="button" hidden>Voltar à revisão sem alterar</button>
       </div>
       <div class="import-error" id="importError" hidden></div>
@@ -102,8 +99,8 @@
   <div class="preview-topbar">
     <div class="preview-topbar-inner">
       <div>
-        <span class="preview-eyebrow">Revisão · antes de publicar</span>
-        <div class="preview-heading">Confira e ajuste o roteiro gerado</div>
+        <span class="preview-eyebrow" id="previewEyebrow">Novo evento</span>
+        <h2 class="preview-heading" id="previewHeading">Reserve a data do evento</h2>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn" id="previewBackBtn" type="button">Adicionar roteiro</button>
@@ -113,37 +110,37 @@
   </div>
   <div class="preview-view">
     <div class="field-row">
-      <span class="field-label">Nome do evento</span>
+      <label class="field-label" for="previewEventTitle">Nome do evento</label>
       <input class="field-input" id="previewEventTitle" type="text" maxlength="70">
     </div>
     <div class="field-grid field-row">
       <div>
-        <span class="field-label">Início do evento (opcional)</span>
+        <label class="field-label" for="previewEventDate">Início do evento (opcional)</label>
         <input class="field-input" id="previewEventDate" type="datetime-local">
       </div>
       <div>
-        <span class="field-label">Término do evento (opcional)</span>
-        <input class="field-input" id="previewEventEndDate" type="datetime-local">
+        <label class="field-label" for="previewEventEndDate">Término do evento (opcional)</label>
+        <input class="field-input" id="previewEventEndDate" aria-describedby="eventDateWarning" type="datetime-local">
       </div>
     </div>
-    <div class="field-warning" id="eventDateWarning" hidden>⚠ O término precisa ser depois do início — sem isso, o Google Calendar vai usar 4h de duração a partir do início.</div>
+    <div class="field-warning" id="eventDateWarning" role="status" hidden>⚠ O término precisa ser depois do início — sem isso, o Google Calendar vai usar 4h de duração a partir do início.</div>
     <div class="field-row">
-      <span class="field-label">Local (opcional)</span>
+      <label class="field-label" for="previewEventLocation">Local (opcional)</label>
       <input class="field-input" id="previewEventLocation" type="text" maxlength="120" placeholder="Endereço ou nome do espaço">
     </div>
     <div class="field-row">
-      <span class="field-label">Observações (opcional)</span>
+      <label class="field-label" for="previewNotes">Observações (opcional)</label>
       <textarea class="field-textarea" id="previewNotes" maxlength="20000" placeholder="Qualquer coisa que a equipe precise saber..."></textarea>
     </div>
     <div class="field-row">
-      <span class="field-label">Convidados do Google Calendar (um email por linha, opcional)</span>
-      <textarea class="field-textarea" id="previewCalendarGuests" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
-      <span class="field-hint">Só funciona se você tiver conectado o Google (Calendar + Drive) em "Meus eventos" — cada convidado recebe um convite por email quando você publicar/salvar. Para membros que autorizaram a sincronização automática, use o campo de equipe abaixo.</span>
+      <label class="field-label" for="previewCalendarGuests">Convidados do Google Calendar (um email por linha, opcional)</label>
+      <textarea class="field-textarea" id="previewCalendarGuests" aria-describedby="calendarGuestsHint" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
+      <span class="field-hint" id="calendarGuestsHint">Só funciona se você tiver conectado o Google (Calendar + Drive) em "Meus eventos" — cada convidado recebe um convite por email quando você publicar/salvar. Para membros que autorizaram a sincronização automática, use o campo de equipe abaixo.</span>
     </div>
     <div class="field-row">
-      <span class="field-label">Membros da equipe (um email por linha, opcional)</span>
-      <textarea class="field-textarea" id="previewMemberEmails" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
-      <span class="field-hint">Cada email vira membro na hora (se já tiver conta no CAPTURA) ou recebe um convite por email (se ainda não tiver). Quem conectar o Google e autorizar você em "Meus eventos" receberá os eventos automaticamente na agenda.</span>
+      <label class="field-label" for="previewMemberEmails">Membros da equipe (um email por linha, opcional)</label>
+      <textarea class="field-textarea" id="previewMemberEmails" aria-describedby="memberEmailsHint" placeholder="Ex: fulana@gmail.com&#10;beltrano@gmail.com"></textarea>
+      <span class="field-hint" id="memberEmailsHint">Cada email vira membro na hora (se já tiver conta no CAPTURA) ou recebe um convite por email (se ainda não tiver). Quem conectar o Google e autorizar você em "Meus eventos" receberá os eventos automaticamente na agenda.</span>
     </div>
     <div class="field-row field-checkbox-row">
       <label class="field-checkbox-label">
@@ -152,9 +149,9 @@
       </label>
     </div>
     <div class="field-row">
-      <span class="field-label">Estrutura de pastas pro Google Drive (uma por linha, opcional)</span>
-      <textarea class="field-textarea" id="previewDriveFolders" placeholder="Ex: Chegada&#10;Cerimônia&#10;Final/Fotos finais&#10;Final/Vídeos finais"></textarea>
-      <span class="field-hint">Use <code>/</code> pra colocar uma pasta dentro de outra — ex: <code>Final/Fotos finais</code> cria a pasta "Fotos finais" dentro de "Final".</span>
+      <label class="field-label" for="previewDriveFolders">Estrutura de pastas pro Google Drive (uma por linha, opcional)</label>
+      <textarea class="field-textarea" id="previewDriveFolders" aria-describedby="driveFoldersHint" placeholder="Ex: Chegada&#10;Cerimônia&#10;Final/Fotos finais&#10;Final/Vídeos finais"></textarea>
+      <span class="field-hint" id="driveFoldersHint">Use <code>/</code> pra colocar uma pasta dentro de outra — ex: <code>Final/Fotos finais</code> cria a pasta "Fotos finais" dentro de "Final".</span>
     </div>
     <div class="field-row" id="driveFolderAction"></div>
 
@@ -187,7 +184,7 @@
       </button>
       <div class="login-divider"><span>ou</span></div>
       <div class="field-row">
-        <span class="field-label">Email</span>
+        <label class="field-label" for="loginEmailInput">Email</label>
         <input class="field-input" id="loginEmailInput" type="email" placeholder="voce@email.com" autocomplete="email">
       </div>
       <div class="import-actions">
@@ -268,7 +265,7 @@
     <p class="import-sub" style="margin-top:0;">Só quem salvou este evento aparece aqui. "Editor" pode alterar fases, cenas e missões — marcar progresso continua liberado pra qualquer um com o link, sem precisar disso.</p>
     <div class="field-row" style="display:flex; gap:8px; align-items:flex-end;">
       <div style="flex:1;">
-        <span class="field-label">Adicionar membro por email</span>
+        <label class="field-label" for="addMemberEmailInput">Adicionar membro por email</label>
         <input class="field-input" id="addMemberEmailInput" type="email" placeholder="nome@email.com">
       </div>
       <button class="btn btn-primary" id="addMemberBtn" type="button">Adicionar</button>

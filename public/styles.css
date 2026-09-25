@@ -6,8 +6,8 @@
   --border: rgba(255,255,255,0.08);
   --border-strong: rgba(255,255,255,0.20);
   --text: #f7f6f1;
-  --text-muted: #9c9c98;
-  --text-faint: #636360;
+  --text-muted: #b4b4ae;
+  --text-faint: #a3a39e;
   --rec: #ff3b4e;
   --rec-soft: rgba(255,59,78,0.14);
   --amber: #ffd400;
@@ -396,3 +396,49 @@ footer{max-width:1180px; margin:0 auto; padding:0 28px 50px; color:var(--text-fa
 .calendar-permissions form { display: grid; gap: 12px; max-width: 520px; }
 .calendar-permission-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
 .calendar-permission-row span { overflow-wrap: anywhere; min-width: 0; }
+
+/* Entrada compacta e controles legíveis em desktop e celular. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.import-view{min-height:0;padding:24px 20px;}
+.import-wrap{gap:18px;}
+.hero-brand{margin-bottom:12px;}
+.hero-title{font-size:clamp(1.4rem,3vw,1.8rem);margin-bottom:8px;}
+.hero-sub{margin-bottom:10px;}
+.hero-steps{display:block;margin:0;color:var(--text-muted);font-size:.875rem;}
+.hero-steps span{margin:0 6px;color:var(--amber);}
+.import-card{padding:24px;}
+.import-sub{margin-bottom:14px;}
+.import-textarea{min-height:120px;height:120px;}
+.import-actions{margin-top:12px;}
+.btn-secondary{border-color:transparent;text-decoration:underline;text-underline-offset:4px;}
+.preview-heading{margin:4px 0 0;}
+.field-label,.field-hint,.field-warning,.history-meta,.notes-status,.import-eyebrow,.preview-eyebrow,.auth-link,.auth-email,.status-times{font-size:.875rem;}
+.field-label{display:block;}
+.btn,.field-input,.field-select,.field-textarea{font-size:1rem;}
+.icon-btn,.hero-dismiss{min-width:44px;min-height:44px;}
+.hero-dismiss{position:static;margin-left:auto;float:right;}
+.status-btn,.mission-chip,.phase-pill,.reset-btn,.auth-link{min-height:44px;}
+.preview-topbar-inner,.history-actions{flex-wrap:wrap;}
+.preview-topbar-inner>div:last-child{flex-wrap:wrap;}
+input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--amber);outline-offset:3px;}
+input::placeholder,textarea::placeholder{color:var(--text-faint);opacity:1;}
+@media(max-width:600px){
+  .import-view{padding:16px 12px;}
+  .import-wrap{gap:14px;}
+  .import-card{padding:16px;}
+  .hero-brand{margin-bottom:8px;}
+  .hero-sub{font-size:.9rem;margin-bottom:8px;}
+  .import-title{font-size:1.3rem;}
+  .import-actions>.btn{flex:1 1 140px;white-space:normal;padding:10px 12px;}
+  .import-actions>.btn-secondary{flex-basis:100%;}
+  .preview-topbar-inner>div:last-child{width:100%;}
+  .preview-topbar-inner>div:last-child>.btn{flex:1 1 130px;}
+  .auth-email{overflow-wrap:anywhere;}
+  #authStripLoggedIn{flex-wrap:wrap;gap:8px;}
+  .status-btn,.reset-btn{font-size:.875rem;}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto;}*,*::before,*::after{transition:none!important;animation:none!important;}}
+
+input[type="datetime-local"]:focus-within{outline:2px solid var(--amber);outline-offset:3px;}
+.add-btn{min-height:44px;font-size:.875rem;}
+@media(max-width:400px){.field-grid{grid-template-columns:minmax(0,1fr);} .preview-scene-top{flex-wrap:wrap;}}
