@@ -121,7 +121,7 @@ public/privacidade.html política de privacidade (exigida pela tela de consentim
 
 Feita uma revisão manual do projeto inteiro (RLS de cada tabela conferida ao vivo no banco, escaping de HTML em todo lugar que renderiza texto do usuário, histórico do Git checado por segredo vazado, `npm audit`). Achados e correções:
 - **`/api/parse-roteiro` exige login e tem dois limitadores em camada**: por IP (10/15min, contra abuso vindo de fora) e por conta (3/15min — o "uso justo" de quem já está logado, enquanto não existe plano pago). Antes do login com Google ser aberto pro público, gerar checklist era anônimo; abrir cadastro sem exigir conta ali teria virado gasto ilimitado na API da Anthropic pra qualquer visitante.
-- **`/api/events/:id/progress`** tem seu próprio limitador (120/min — mais generoso porque é uso legítimo normal de uma equipe inteira marcando progresso ao vivo, mas evita inundar a tabela de progresso, que é pública e sem login de propósito).
+- **`/api/events/:id/progress`** tem seu próprio limitador (120/min — mais generoso porque é uso legítimo normal de uma equipe inteira marcando progresso ao vivo, mas evita inundar a tabela de progresso; desde `supabase-access-control.sql` a tabela não é mais acessível direto pelo PostgREST e o servidor confere o modo de compartilhamento antes de gravar).
 - `trust proxy` ajustado de `true` pra `1` — confia só no proxy do próprio Render, não deixa o cliente forjar o IP que os limitadores acima enxergam.
 - Cabeçalhos básicos de segurança em toda resposta: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
 - Tokens do Google, `SUPABASE_SERVICE_ROLE_KEY` e as chaves de criptografia/assinatura nunca chegam ao navegador nem ao Git (`.env` sempre ignorado, conferido no histórico inteiro do repositório).
@@ -129,7 +129,7 @@ Feita uma revisão manual do projeto inteiro (RLS de cada tabela conferida ao vi
 
 ## Testes
 
-`npm test` roda duas frentes:
+`npm test` roda os arquivos em série (os testes de banco dividem o mesmo Postgres e aplicam migrações em transação). Frentes principais:
 - **RLS/autorização** (`tests/rls.test.js`, 15 testes): `anon` bloqueado em `events`/`event_members`, dono vs. editor vs. visualizador vs. estranho, promoção/rebaixamento de membro, o trigger que define `can_edit` no insert — direto contra o Postgres do Supabase, cada um dentro de uma transação sempre desfeita, não comita nada de verdade. É exatamente o tipo de teste que teria pego o IDOR original antes de precisar de um pentest externo pra achar. Precisa de uma variável `DATABASE_URL` (connection string do Postgres, diferente das chaves do `.env` principal) — passo a passo completo em `tests/README.md`.
 - **Lógica pura** (`tests/pure.test.js`, 29 testes): dobra e compactação do log de progresso, validação do payload de evento (incluindo convidados do Calendar), separação de caminho de pasta do Drive, filtro de email, e o rate limiter — funções extraídas pra `lib/pure.js` de propósito, sem banco nem rede, rodam em milissegundos. Não precisam de `DATABASE_URL`.
 
@@ -225,3 +225,46 @@ Em **Meus eventos → Editar → Adicionar roteiro**, cole o texto, gere a check
 Quando já existe conteúdo, o botão mostra **Substituir roteiro** e pede confirmação antes da geração. As cenas e missões novas recebem IDs próprios: o progresso anterior não é transferido. Em caso de erro, o texto e o rascunho permanecem para nova tentativa. **Voltar à revisão sem alterar** cancela a geração em andamento e mantém o roteiro anterior. Criar um evento novo continua sendo um fluxo separado.
 
 Essa correção não exige migração de banco. O service worker inclui o módulo de edição para manter o carregamento offline. `tests/roteiro-edit.test.js` executa os handlers reais do app com DOM, autenticação e HTTP simulados, incluindo falha, cancelamento, retorno do login e atualização do mesmo evento.
+
+## Compartilhamento, convites, edição simultânea e abertura offline
+
+A migração tem duas etapas, pra não haver janela com o app quebrado (requer as migrações anteriores de membros, Calendar e exclusão):
+
+1. **Antes do deploy:** `supabase-access-control.sql` no SQL Editor do Supabase. Só adiciona colunas, tabelas e funções — o servidor anterior continua funcionando. O servidor novo não funciona sem ela (abrir eventos responde 503 e a fila de convites fica desativada, com aviso no log).
+2. **Depois que o deploy estiver no ar:** `supabase-access-control-lockdown.sql`, que fecha o acesso direto pela anon key (ver abaixo). O servidor anterior gravava progresso com a anon key e quebraria com essa etapa aplicada.
+
+Faça o deploy logo depois da etapa 1: eventos criados pelo servidor antigo nesse intervalo não ganham o período de link antigo.
+
+### Quem abre cada evento
+
+Na tela de criar/editar, o dono escolhe o modo em **Quem pode abrir este evento**:
+
+| Modo | Quem abre | Quem marca progresso |
+|---|---|---|
+| Somente equipe | dono e membros logados | dono e membros |
+| Link para visualizar | + quem tiver o link | só dono e membros |
+| Link para colaborar (padrão) | + quem tiver o link | + quem tiver o link (e pode entrar na equipe) |
+
+- O link público é `/s/<token>`: um código aleatório de 32 caracteres, **não o ID do evento**. O dono pode copiar, desativar ou gerar um novo — o anterior para na hora, e quem estiver com o evento aberto por ele recebe o aviso "Este link não funciona mais" (o stream em tempo real é encerrado).
+- Quem entra só pelo link não recebe emails da equipe nem dos convidados.
+- `/e/<id>` passa a ser o endereço da equipe (exige login). **Links antigos:** eventos que já existiam quando a migração rodou continuam abrindo por `/e/<id>` sem login por **60 dias** (`event_access.legacy_link_until`). Mudar o modo, gerar um link novo ou desativar o link encerra esse período na hora.
+- A etapa 2 fecha dois acessos diretos pelo PostgREST com a anon key pública: ler/gravar `event_progress` de qualquer evento e se auto-inserir em `event_members` de qualquer evento. Progresso agora só passa pelo servidor, que confere o modo; entrar na equipe só por convite do dono ou `join_shared_event` (modo colaborar).
+- O stream SSE da equipe usa um ticket curto (`POST /api/events/:id/stream-ticket`, 60s), porque `EventSource` não envia cabeçalho de login.
+
+### Convites da equipe
+
+Cada email adicionado vira uma linha em `event_member_invites` (pendente → adicionado / já estava / convite enviado / falhou). O salvamento processa o que couber em ~4s e responde com um resumo (adicionados, já existentes, convites enviados, emails inválidos, falhas com mensagem segura); o resto continua num worker a cada 20s, que retoma convites presos após reinício do servidor. Falhas temporárias (limite de envio, serviço fora) são repetidas automaticamente até 3 vezes; depois disso o dono vê **Reenviar convites com falha**, que reprocessa só esses.
+
+### Edição sem sobrescrita
+
+`events.revision` sobe (por trigger) quando roteiro, datas, equipe ou configurações mudam — notas ficam fora e continuam leves. O save envia `base_revision`; se outra pessoa salvou antes, o servidor responde **409** e a tela mostra "Este evento foi alterado por outra pessoa." com **Comparar**, **Copiar meu rascunho** e **Carregar versão mais recente**. O rascunho em conflito sobrevive a recarregar a página. Abas antigas sem versão recebem 428 e caem no mesmo fluxo.
+
+### Abertura resiliente e offline
+
+- O supabase-js é servido pelo próprio servidor (`/vendor/supabase.js`, do `node_modules`) em vez da CDN, pra entrar no cache do service worker.
+- O service worker guarda a última `/api/config` válida (responde do cache e revalida em segundo plano; configuração inválida nunca substitui a boa) e as cópias dos eventos abertos num cache de dados que sobrevive a atualizações do app. Resposta 403/404/410 apaga a cópia daquele evento; sair da conta apaga todas.
+- Se a inicialização falhar, a tela explica o motivo (sem conexão, servidor, configuração incompleta), oferece **Tentar novamente** e, se houver cópias, **Abrir eventos disponíveis offline**. Nenhum caminho fica preso em "Carregando…" (há um limite de 20s).
+
+### Testes
+
+`tests/access-control-rls.test.js` aplica as duas etapas numa transação com ROLLBACK (as que ainda não estiverem instaladas), confere que a etapa 1 mantém o servidor anterior funcionando e cobre os 3 modos, revogação/regeneração de token, período de links antigos, bloqueio de `event_progress`, versão e edição concorrente, fila de convites (reenvio, reserva e retomada após reinício). `tests/access.test.js` e `tests/member-invites.test.js` cobrem a decisão de acesso e o processador de convites sem banco; `tests/app-flows.test.js` e `tests/service-worker.test.js` executam o app e o service worker reais com rede simulada (abertura offline, link revogado, somente leitura, conflito 409, resumo de convites).

@@ -189,8 +189,7 @@ test('trigger ignora can_edit mandado pelo client e usa o allow_member_edit do e
   await withTransaction(async (client) => {
     const id = testEventId();
     await seedEvent(client, { id, allowMemberEdit: false });
-    await actAsUser(client, memberId);
-    // tenta se auto-inserir já como editor — o trigger deve sobrescrever pra false
+    // insere já como editor (como admin: auto-inserção não é mais permitida) — o trigger deve sobrescrever pra false
     await client.query('insert into event_members (event_id, user_id, can_edit) values ($1, $2, true)', [id, memberId]);
     const { rows } = await client.query('select can_edit from event_members where event_id = $1 and user_id = $2', [id, memberId]);
     assert.equal(rows[0].can_edit, false);
@@ -201,24 +200,14 @@ test('trigger ignora can_edit mandado pelo client e usa o allow_member_edit do e
   await withTransaction(async (client) => {
     const id = testEventId();
     await seedEvent(client, { id, allowMemberEdit: true });
-    await actAsUser(client, memberId);
     await client.query('insert into event_members (event_id, user_id, can_edit) values ($1, $2, false)', [id, memberId]);
     const { rows } = await client.query('select can_edit from event_members where event_id = $1 and user_id = $2', [id, memberId]);
     assert.equal(rows[0].can_edit, true);
   });
 });
 
-test('event_progress continua público (anon insere e lê) — design intencional, não uma falha', async () => {
-  await withTransaction(async (client) => {
-    const id = testEventId();
-    await seedEvent(client, { id });
-    await actAsAnon(client);
-    await client.query("insert into event_progress (event_id, action, payload) values ($1, 'status', '{}'::jsonb)", [id]);
-    const { rows } = await client.query('select action from event_progress where event_id = $1', [id]);
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].action, 'status');
-  });
-});
+// event_progress deixou de ser público (supabase-access-control.sql): só o
+// servidor grava/lê progresso — ver tests/access-control-rls.test.js.
 
 test('add_event_member_by_email: dono adiciona alguém com conta existente pelo email', async () => {
   await withTransaction(async (client) => {

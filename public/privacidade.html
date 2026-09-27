@@ -26,7 +26,7 @@
 <div class="policy-wrap">
   <a class="btn policy-back" href="/">← Voltar pro CAPTURA</a>
   <h1>Política de Privacidade do CAPTURA</h1>
-  <p class="policy-updated">Última atualização: 18 de setembro de 2026</p>
+  <p class="policy-updated">Última atualização: 25 de setembro de 2026</p>
 
   <p>O CAPTURA é uma ferramenta de checklist de cobertura de eventos (casamentos, festas e afins). Esta página explica quais dados coletamos, pra que usamos, e como você pode controlá-los.</p>
 
@@ -35,18 +35,25 @@
     <li><strong>Email</strong> — quando você cria conta (login por link mágico ou por "Entrar com Google"), guardamos seu email pra identificar sua conta.</li>
     <li><strong>Conteúdo que você cria</strong> — o roteiro que você cola, e o checklist gerado a partir dele (fases, cenas, textos, nome/data/local do evento).</li>
     <li><strong>Progresso do evento</strong> — quais cenas foram marcadas como "em andamento"/"feito" e quando, pra sincronizar isso ao vivo entre a equipe.</li>
+    <li><strong>Convites para a equipe</strong> — quando o dono de um evento adiciona alguém pelo email, guardamos esse email, a situação do convite (pendente, enviado, adicionado ou com falha), o número de tentativas e quem pediu, pra mostrar o resultado e reenviar só o que falhou.</li>
     <li><strong>Conexão com Google Calendar e Drive (opcional)</strong> — só se você conectar essa integração, guardamos um token de acesso pra criar eventos na sua agenda e pastas no seu Drive em seu nome. Nunca lemos ou acessamos arquivos que o CAPTURA não criou.</li>
   </ul>
 
   <h2>Como usamos esses dados</h2>
   <p>Usamos seus dados só pra fazer o CAPTURA funcionar: gerar e exibir sua checklist, sincronizar progresso entre a equipe em tempo real, e (se você pedir) criar eventos no Calendar e pastas no Drive. Não vendemos, alugamos nem usamos seus dados pra publicidade.</p>
 
+  <h2>Links de compartilhamento</h2>
+  <p>O dono escolhe, em cada evento, quem pode abri-lo: <strong>somente a equipe</strong> (pessoas com conta que foram adicionadas), <strong>link para visualizar</strong> (quem tiver o link vê o checklist, sem alterar) ou <strong>link para colaborar</strong> (quem tiver o link também marca o progresso e pode entrar na equipe). O link usa um código aleatório, diferente do identificador do evento, e pode ser desativado ou trocado a qualquer momento: o link anterior para de funcionar na hora, e quem estiver com o evento aberto por ele perde o acesso. Quem entra só pelo link não vê os emails da equipe nem dos convidados. Endereços antigos dos eventos criados antes desse controle continuam abrindo por um período de transição, que termina antes se o dono mudar o compartilhamento.</p>
+
+  <h2>Convites por email</h2>
+  <p>Quando o dono adiciona um email que ainda não tem conta, o Supabase envia um convite para esse endereço em nome do CAPTURA. Se o envio falhar por um problema temporário, tentamos de novo automaticamente algumas vezes; depois disso, o dono vê a falha e decide se reenvia. Guardamos só uma mensagem de erro resumida, nunca o conteúdo do email. Excluir o evento apaga esses registros.</p>
+
   <h2>Eventos de pessoas autorizadas</h2>
   <p>Você pode autorizar individualmente organizadores em “Meus eventos”. Com sua conta Google conectada, o CAPTURA cria e atualiza cópias dos eventos em que você é membro, inclusive eventos existentes. Remover você da equipe, retirar a data ou excluir o evento remove a cópia enquanto a autorização e a conexão estiverem ativas. Revogar uma pessoa interrompe a sincronização; os eventos já criados permanecem na agenda. Desconectar o Google pausa a sincronização; reconectar a retoma para as pessoas ainda autorizadas. Guardamos essas autorizações, referências dos eventos e uma fila de sincronização para repetir operações que falharem.</p>
 
   <h2>Com quem compartilhamos</h2>
   <ul>
-    <li><strong>Supabase</strong> — hospeda nosso banco de dados e cuida do login.</li>
+    <li><strong>Supabase</strong> — hospeda nosso banco de dados, cuida do login e envia os emails de login e de convite para a equipe.</li>
     <li><strong>Anthropic (Claude)</strong> — o texto do roteiro que você cola é enviado pra essa IA só na hora de gerar o checklist, pra organizar em fases/cenas.</li>
     <li><strong>Google</strong> — só se você conectar Calendar/Drive, usamos a API do Google em seu nome, com sua autorização explícita.</li>
     <li><strong>Sentry</strong> — registra erros técnicos do servidor pra gente conseguir corrigir bugs mais rápido.</li>
@@ -61,6 +68,7 @@
 
   <h2>Cookies e armazenamento local</h2>
   <p>O CAPTURA guarda algumas preferências só no seu navegador (localStorage), como o modo de visualização do histórico, e usa cache local (service worker) pra funcionar offline. Isso não sai do seu aparelho.</p>
+  <p>Pra abrir sem internet, o aparelho guarda uma cópia dos eventos que você já abriu nele (roteiro, datas, local e, para a equipe, os emails da equipe) e o progresso marcado offline até ele ser enviado. Essa cópia é apagada do aparelho quando o link é desativado ou o acesso é retirado (na próxima vez que o app conseguir falar com o servidor) e quando você sai da conta. Você também pode apagá-la limpando os dados do site no navegador.</p>
 
   <h2>Mudanças nesta política</h2>
   <p>Se atualizarmos esta política, a data no topo da página muda. Recomendamos revisitar de vez em quando.</p>

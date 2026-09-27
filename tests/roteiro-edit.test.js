@@ -1,66 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import vm from 'node:vm';
-import { webcrypto } from 'node:crypto';
-import { mergeGeneratedRoteiro, hasRoteiro } from '../public/roteiro-draft.js';
+import { mergeGeneratedRoteiro } from '../public/roteiro-draft.js';
+import { browser as harness } from './app-harness.js';
 
 const reserved = {
   owner_id: 'owner', event_title: 'Evento reservado', event_date: '2026-10-10T10:00',
   event_end_date: '2026-10-10T18:00', event_location: 'Salão', notes: 'Chegar cedo',
   member_emails: ['equipe@example.com'], calendar_guests: ['convidado@example.com'],
   allow_member_edit: true, drive_folder_id: 'drive-existing', drive_folders: ['Originais'],
-  phases: [], scenes: [], missions: []
+  phases: [], scenes: [], missions: [], revision: 3
 };
 const generated = {
   event_title: 'Título da IA', phases: [{ key: 'p1', label: 'Cerimônia' }],
   scenes: [{ id: 'c1', phase: 'p1', title: 'Entrada' }], missions: []
 };
 
-// Executa o app real com DOM, autenticação e HTTP simulados. Não acessa contas,
-// IA ou Calendar. Os testes acionam os mesmos handlers dos botões da página.
-async function browser({ event = reserved, path = '/e/existing/editar', parse, confirm = true, pending } = {}) {
-  const elements = new Map(), calls = [], alerts = [], confirmations = [];
-  function element(id) {
-    if (!elements.has(id)) elements.set(id, {
-      value: '', hidden: false, disabled: false, innerHTML: '', textContent: '', style: {}, dataset: {}, handlers: {},
-      classList: { add() {}, remove() {}, toggle() {} },
-      addEventListener(type, fn) { this.handlers[type] = fn; },
-      querySelectorAll() { return []; }, setAttribute() {}, focus() {}, replaceChildren() {}, select() {}
-    });
-    return elements.get(id);
-  }
-  const storage = new Map();
-  if(pending) storage.set('captura_pending_roteiro', JSON.stringify(pending));
-  const location = { pathname: path, search: '', origin: 'https://captura.example' };
-  const context = {
-    mergeGeneratedRoteiro: (existing, result) => mergeGeneratedRoteiro(existing, result, () => webcrypto.randomUUID()), hasRoteiro,
-    document: { getElementById: element, querySelectorAll: () => [], querySelector: () => null, addEventListener() {} },
-    window: { location, addEventListener() {}, scrollTo() {} },
-    navigator: { onLine: true },
-    history: { pushState(a,b,url) { location.pathname = url; }, replaceState(a,b,url) { location.pathname = url; } },
-    localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) },
-    supabase: { createClient: () => ({ auth: { getSession: async () => ({ data: { session: { user: { id: 'owner' }, access_token: 'test' } } }), onAuthStateChange() {} } }) },
-    fetch: async (url, options = {}) => {
-      calls.push({ url, ...options });
-      let data = {};
-      if (url === '/api/config') data = { googleCalendarEnabled: true };
-      else if (url === '/api/parse-roteiro') return parse ? parse(options) : { ok: true, json: async () => generated };
-      else if (url === '/api/events/existing' && !options.method) data = event;
-      else if (options.method === 'PATCH' || options.method === 'POST') data = { id: 'created' };
-      return { ok: true, json: async () => data };
-    },
-    alert: text => alerts.push(text), confirm: text => { confirmations.push(text); return confirm; },
-    URLSearchParams, AbortController, console, setInterval() {}, clearInterval() {}, setTimeout, clearTimeout,
-    EventSource: class { close() {} }
-  };
-  const code = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/, '');
-  vm.runInNewContext(code, context);
-  const settle = async () => { for (let i=0;i<5;i++) await new Promise(resolve => setImmediate(resolve)); };
-  await settle();
-  return { element, calls, alerts, confirmations, location, settle,
-    click: async id => { await element(id).handlers.click({ target: element(id), preventDefault() {} }); await settle(); }
-  };
+async function browser({ event = reserved, path = '/e/existing/editar', ...rest } = {}) {
+  return harness({ event, path, generated, ...rest });
 }
 
 test('Adicionar roteiro preserva dados, equipe, Drive e salva no mesmo evento', async () => {
@@ -77,7 +33,10 @@ test('Adicionar roteiro preserva dados, equipe, Drive e salva no mesmo evento', 
   const save = b.calls.find(c => c.method === 'PATCH');
   assert.equal(save.url, '/api/events/existing');
   const payload = JSON.parse(save.body);
-  for (const field of ['event_title','event_date','event_end_date','event_location','notes','member_emails','calendar_guests','allow_member_edit','drive_folder_id','drive_folders']) {
+  assert.equal(payload.base_revision, 3);
+  // Observações não alteradas não vão no save completo (não sobrescrevem notas de outro membro).
+  assert.equal('notes' in payload, false);
+  for (const field of ['event_title','event_date','event_end_date','event_location','member_emails','calendar_guests','allow_member_edit','drive_folder_id','drive_folders']) {
     assert.deepEqual(payload[field], reserved[field], field);
   }
   assert.equal(payload.scenes[0].title, 'Entrada');

@@ -11,6 +11,8 @@ import { OAuth2Client } from 'google-auth-library';
 import { createCalendarWorker } from './lib/calendar-sync.js';
 import * as Sentry from '@sentry/node';
 import { foldProgress, validEventPayload, splitDriveFolderPath, makeRateLimiter, filterValidEmails } from './lib/pure.js';
+import { decideAccess, isValidShareToken, isValidEventId, normalizeShareMode, stripPrivateFields } from './lib/access.js';
+import { createInviteProcessor, normalizeEmailList, summarizeInvites } from './lib/member-invites.js';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -50,6 +52,14 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: '1mb' }));
+
+// supabase-js servido pelo próprio app (versão travada no package-lock), em
+// vez de CDN externo: o service worker só guarda arquivos da mesma origem, e
+// sem essa biblioteca o app não abre offline.
+app.get('/vendor/supabase.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd', 'supabase.js'));
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rateLimit = makeRateLimiter(
@@ -98,15 +108,40 @@ function getBearerToken(req) {
   return h.startsWith('Bearer ') ? h.slice(7) : null;
 }
 
+// Progresso é marcado várias vezes por minuto; sem esse cache cada marcação
+// faria uma ida ao Supabase Auth só pra saber quem é a pessoa.
+const userCache = new Map(); // jwt -> { user, exp }
+async function userFromToken(token) {
+  if (!token || !supabase) return null;
+  const hit = userCache.get(token);
+  if (hit && hit.exp > Date.now()) return hit.user;
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) return null;
+  if (userCache.size > 1000) userCache.clear();
+  userCache.set(token, { user: data.user, exp: Date.now() + 60 * 1000 });
+  return data.user;
+}
+
 async function requireAuth(req, res, next) {
   if (!supabase) return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
   const token = getBearerToken(req);
   if (!token) return res.status(401).json({ error: 'Login necessário.' });
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user) return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
-  req.user = data.user;
+  const user = await userFromToken(token);
+  if (!user) return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
+  req.user = user;
   req.token = token;
   next();
+}
+
+// Login opcional: rotas públicas (evento por link) também servem a equipe logada.
+async function optionalUser(req) {
+  return userFromToken(getBearerToken(req));
+}
+
+const appBaseUrl = process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:' + (process.env.PORT || 3000);
+
+function requestBaseUrl(req) {
+  return `${req.protocol}://${req.get('host')}`;
 }
 
 // Cliente por-requisição com o JWT do usuário anexado — necessário pra RLS
@@ -401,7 +436,7 @@ async function getValidGoogleAccessToken(userId) {
 // A fila é preenchida por triggers na mesma transação dos eventos/membros.
 const runCalendarSync = createCalendarWorker({
   db: supabaseAdmin, getToken: getValidGoogleAccessToken,
-  baseUrl: process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:' + (process.env.PORT || 3000),
+  baseUrl: appBaseUrl,
   logError
 });
 if (supabaseAdmin) {
@@ -544,48 +579,107 @@ app.post('/api/google/drive-folders', requireAuth, async (req, res) => {
   }
 });
 
-// Adiciona alguém como membro do evento a partir do email digitado pelo dono
-// — sem isso, a única forma de virar membro era a própria pessoa achar o
-// link e clicar em "Salvar nos meus eventos". Quem já tem conta entra na
-// hora (via o RPC `add_event_member_by_email`, que baixa com segurança a
-// trava de "só auto-inserção" da policy de INSERT de `event_members`); quem
-// ainda não tem conta recebe um convite de verdade pelo Supabase Auth e já
-// fica vinculado ao evento assim que a conta é criada.
-async function addMemberByEmail(req, eventId, rawEmail) {
-  const email = filterValidEmails([rawEmail])[0];
-  if (!email) return { ok: false, error: 'Email inválido.' };
+// ---------- convites de membros (fila persistente) ----------
+// O dono enfileira os emails (RPC com checagem de posse); o processamento usa
+// a service role. Parte roda dentro do próprio request de salvar (tempo
+// limitado, pra publicação continuar rápida) e o resto fica com o worker,
+// que retoma inclusive depois de reiniciar o servidor.
+const inviteProcessor = createInviteProcessor({
+  admin: supabaseAdmin,
+  inviteUser: (email, redirectTo) => supabaseAdmin.auth.admin.inviteUserByEmail(email, { redirectTo }),
+  logError
+});
+const INVITE_REQUEST_BUDGET_MS = 4000;
 
-  const db = scopedClient(req.token);
-  const { data: userId, error } = await db.rpc('add_event_member_by_email', { p_event_id: eventId, p_email: email });
-  if (error) {
-    if (error.message && error.message.includes('not event owner')) {
-      return { ok: false, error: 'Só o dono do evento pode adicionar membros.' };
+let inviteMigrationWarned = false;
+async function runInvites(options) {
+  try {
+    return await inviteProcessor.run(options);
+  } catch (err) {
+    // Servidor novo contra banco sem supabase-access-control.sql: avisa uma
+    // vez em vez de a cada ciclo do worker.
+    if (err?.code === 'PGRST202') {
+      if (!inviteMigrationWarned) console.error('Fila de convites desativada: execute supabase-access-control.sql no Supabase.');
+      inviteMigrationWarned = true;
+      return [];
     }
-    logError('Erro ao adicionar membro:', error);
-    return { ok: false, error: 'Não consegui adicionar esse membro.' };
+    logError('Fila de convites indisponível:', err);
+    return [];
   }
-  if (userId) return { ok: true, status: 'added', email };
-
-  if (!supabaseAdmin) return { ok: false, error: 'Convite não configurado no servidor.' };
-  const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${req.protocol}://${req.get('host')}/e/${eventId}`
-  });
-  if (inviteError) {
-    // pode acontecer numa corrida (reenvio, ou duas pessoas adicionando o
-    // mesmo email ao mesmo tempo) — a conta já existe nesse ponto, então
-    // tenta o RPC de novo em vez de falhar direto.
-    const { data: retryId } = await db.rpc('add_event_member_by_email', { p_event_id: eventId, p_email: email });
-    if (retryId) return { ok: true, status: 'added', email };
-    logError('Erro ao convidar novo usuário:', inviteError);
-    return { ok: false, error: 'Não consegui enviar o convite pra esse email.' };
-  }
-  const { error: insertError } = await supabaseAdmin.from('event_members').insert({ event_id: eventId, user_id: invited.user.id });
-  if (insertError && insertError.code !== '23505') {
-    logError('Erro ao vincular convidado ao evento:', insertError);
-    return { ok: false, error: 'Convite enviado, mas não consegui vincular ao evento.' };
-  }
-  return { ok: true, status: 'invited', email };
 }
+
+if (supabaseAdmin) {
+  setInterval(() => runInvites({ budgetMs: 15000, baseUrl: appBaseUrl }), 20000).unref();
+  setTimeout(() => runInvites({ budgetMs: 15000, baseUrl: appBaseUrl }), 3000).unref();
+}
+
+async function readInviteRows(db, eventId, emails) {
+  let query = db.from('event_member_invites').select('event_id, email, status, attempts, last_error, updated_at').eq('event_id', eventId);
+  if (emails) query = query.in('email', emails);
+  const { data, error } = await query.order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+// Garante que cada email listado vire (ou já seja) um convite rastreado e
+// devolve o resumo do que aconteceu neste salvamento. `previousEmails` evita
+// repetir avisos de quem já estava na lista antes.
+async function syncMemberInvites(req, eventId, emails, { isOwner, previousEmails = [] }) {
+  const { valid, invalid } = normalizeEmailList(emails);
+  const before = normalizeEmailList(previousEmails);
+  const previousValid = new Set(before.valid);
+  const previousInvalid = new Set(before.invalid.map(e => e.toLowerCase()));
+  if (!isOwner) {
+    // editores podem salvar o evento, mas só o dono inclui pessoas na equipe
+    return summarizeInvites([], {
+      invalid: invalid.filter(e => !previousInvalid.has(e.toLowerCase())),
+      skipped: valid.filter(e => !previousValid.has(e)).map(email => ({ email, error: 'Só o dono do evento pode adicionar membros.' }))
+    });
+  }
+  if (!valid.length) return summarizeInvites([], { invalid });
+  const db = scopedClient(req.token);
+  const preexisting = new Map((await readInviteRows(db, eventId, valid)).map(r => [r.email, r.status]));
+  const { error } = await db.rpc('enqueue_member_invites', { p_event_id: eventId, p_emails: valid, p_retry_failed: false });
+  if (error) throw error;
+  await runInvites({ eventId, budgetMs: INVITE_REQUEST_BUDGET_MS, baseUrl: requestBaseUrl(req) });
+  return summarizeInvites(await readInviteRows(db, eventId, valid), { invalid, preexisting });
+}
+
+// Falha nos convites nunca derruba o salvamento do evento em si.
+async function safeSyncMemberInvites(req, eventId, emails, options) {
+  try {
+    return await syncMemberInvites(req, eventId, emails, options);
+  } catch (err) {
+    logError('Erro ao registrar convites:', err);
+    const { valid, invalid } = normalizeEmailList(emails);
+    return summarizeInvites([], {
+      invalid,
+      skipped: valid.map(email => ({ email, error: 'Não foi possível registrar o convite agora. Tente reenviar.' }))
+    });
+  }
+}
+
+// ---------- modo de acesso / link compartilhável ----------
+
+function sharePayload(row) {
+  const legacyUntil = row?.legacy_link_until || null;
+  return {
+    share_mode: row?.share_mode || 'team',
+    share_path: row?.share_token ? '/s/' + row.share_token : null,
+    token_created_at: row?.token_created_at || null,
+    legacy_link_until: legacyUntil,
+    legacy_active: !!legacyUntil && new Date(legacyUntil).getTime() > Date.now()
+  };
+}
+
+async function readShare(db, eventId) {
+  const { data, error } = await db.from('event_access')
+    .select('share_mode, share_token, token_created_at, legacy_link_until').eq('event_id', eventId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+const EVENT_COLUMNS = 'id, data, owner_id, allow_member_edit, drive_folder_id, notes, revision';
 
 app.post('/api/events', requireAuth, async (req, res) => {
   const payload = validEventPayload(req.body);
@@ -597,15 +691,31 @@ app.post('/api/events', requireAuth, async (req, res) => {
   const driveFolderId = typeof req.body.drive_folder_id === 'string' ? req.body.drive_folder_id : null;
   const allowMemberEdit = !!req.body.allow_member_edit;
   const notes = typeof req.body.notes === 'string' ? req.body.notes.slice(0, 20000) : '';
+  const shareMode = normalizeShareMode(req.body.share_mode);
   const db = scopedClient(req.token);
-  const { error } = await db.from('events').insert({ id, data: payload, owner_id: req.user.id, drive_folder_id: driveFolderId, allow_member_edit: allowMemberEdit, notes });
+  const { data: created, error } = await db.from('events')
+    .insert({ id, data: payload, owner_id: req.user.id, drive_folder_id: driveFolderId, allow_member_edit: allowMemberEdit, notes })
+    .select('id, revision').single();
   if (error) {
     logError('Erro ao salvar evento:', error);
     return res.status(500).json({ error: 'Não consegui salvar o evento. Tente de novo.' });
   }
-  res.json({ id });
   runCalendarSync();
-  filterValidEmails(payload.member_emails).forEach((email) => addMemberByEmail(req, id, email));
+
+  let share = null;
+  try {
+    // a linha de acesso nasce no trigger como "colaborar"; só muda se pedido
+    if (shareMode && shareMode !== 'collab') {
+      const { error: modeError } = await db.rpc('set_event_share_mode', { p_event_id: id, p_mode: shareMode });
+      if (modeError) throw modeError;
+    }
+    share = sharePayload(await readShare(db, id));
+  } catch (err) {
+    logError('Erro ao configurar compartilhamento do evento novo:', err);
+  }
+
+  const members = await safeSyncMemberInvites(req, id, payload.member_emails, { isOwner: true });
+  res.json({ id, revision: created?.revision ?? 1, share, members });
 });
 
 app.patch('/api/events/:id', requireAuth, async (req, res) => {
@@ -613,18 +723,42 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
   if (!payload) {
     return res.status(400).json({ error: 'Formato de evento inválido.' });
   }
+  const baseRevision = Number.isInteger(req.body.base_revision) ? req.body.base_revision : null;
+  if (baseRevision === null) {
+    // app antigo em cache, sem controle de versão: não deixa sobrescrever às cegas
+    return res.status(428).json({ code: 'revision_required', error: 'Recarregue a página pra editar com a versão mais recente do evento.' });
+  }
+
+  const db = scopedClient(req.token);
+  const { data: current, error: currentError } = await db.from('events').select(EVENT_COLUMNS).eq('id', req.params.id).maybeSingle();
+  if (currentError) {
+    logError('Erro ao carregar evento para editar:', currentError);
+    return res.status(500).json({ error: 'Não consegui salvar as alterações. Tente de novo.' });
+  }
+  if (!current) {
+    return res.status(404).json({ error: 'Evento não encontrado ou você não tem permissão pra editar.' });
+  }
+  const conflict = (latest) => res.status(409).json({
+    code: 'conflict',
+    error: 'Este evento foi alterado por outra pessoa.',
+    current: { ...latest.data, id: latest.id, owner_id: latest.owner_id, allow_member_edit: !!latest.allow_member_edit,
+      drive_folder_id: latest.drive_folder_id || null, notes: latest.notes || '', revision: latest.revision }
+  });
+  if (current.revision !== baseRevision) return conflict(current);
 
   const updateFields = { data: payload };
   if (typeof req.body.drive_folder_id === 'string') updateFields.drive_folder_id = req.body.drive_folder_id;
   if (typeof req.body.allow_member_edit === 'boolean') updateFields.allow_member_edit = req.body.allow_member_edit;
   if (typeof req.body.notes === 'string') updateFields.notes = req.body.notes.slice(0, 20000);
 
-  const db = scopedClient(req.token);
+  // A condição na versão fecha a corrida entre ler e gravar: se outra pessoa
+  // salvou nesse meio tempo, o update não encontra a linha.
   const { data, error } = await db
     .from('events')
     .update(updateFields)
     .eq('id', req.params.id)
-    .select('id, owner_id, google_calendar_event_id')
+    .eq('revision', baseRevision)
+    .select('id, owner_id, revision')
     .maybeSingle();
 
   if (error) {
@@ -632,11 +766,33 @@ app.patch('/api/events/:id', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'Não consegui salvar as alterações. Tente de novo.' });
   }
   if (!data) {
-    return res.status(404).json({ error: 'Evento não encontrado ou você não tem permissão pra editar.' });
+    const { data: latest } = await db.from('events').select(EVENT_COLUMNS).eq('id', req.params.id).maybeSingle();
+    if (latest && latest.revision !== baseRevision) return conflict(latest);
+    return res.status(403).json({ error: 'Você não tem permissão pra editar este evento.' });
   }
-  res.json({ id: data.id });
   runCalendarSync();
-  filterValidEmails(payload.member_emails).forEach((email) => addMemberByEmail(req, data.id, email));
+
+  const isOwner = data.owner_id === req.user.id;
+  let share = null;
+  if (isOwner) {
+    try {
+      const shareMode = normalizeShareMode(req.body.share_mode);
+      const before = await readShare(db, data.id);
+      if (shareMode && shareMode !== before?.share_mode) {
+        const { error: modeError } = await db.rpc('set_event_share_mode', { p_event_id: data.id, p_mode: shareMode });
+        if (modeError) throw modeError;
+        closeLinkStreams(data.id);
+      }
+      share = sharePayload(await readShare(db, data.id));
+    } catch (err) {
+      logError('Erro ao atualizar compartilhamento:', err);
+    }
+  }
+
+  const members = await safeSyncMemberInvites(req, data.id, payload.member_emails, {
+    isOwner, previousEmails: current.data?.member_emails
+  });
+  res.json({ id: data.id, revision: data.revision, share, members });
 });
 
 // Exclui o evento de verdade (só o dono) — event_members e event_progress
@@ -735,13 +891,87 @@ app.get('/api/events/:id/members', requireAuth, async (req, res) => {
   res.json({ members: withEmail });
 });
 
+// Adicionar uma pessoa pela tela "Gerenciar equipe". Diferente do salvamento
+// do evento, aqui o pedido é explícito: um convite que tinha falhado volta
+// pra fila e é tentado de novo.
 app.post('/api/events/:id/members', requireAuth, addMemberRateLimit, async (req, res) => {
-  const result = await addMemberByEmail(req, req.params.id, req.body && req.body.email);
-  if (!result.ok) {
-    return res.status(result.error.includes('dono') ? 403 : 400).json({ error: result.error });
+  const { valid } = normalizeEmailList([req.body && req.body.email]);
+  const email = valid[0];
+  if (!email) return res.status(400).json({ error: 'Email inválido.' });
+  const db = scopedClient(req.token);
+  const { data: before, error } = await db.rpc('enqueue_member_invites', { p_event_id: req.params.id, p_emails: [email], p_retry_failed: true });
+  if (error) {
+    if (String(error.message || '').includes('not event owner')) return res.status(403).json({ error: 'Só o dono do evento pode adicionar membros.' });
+    logError('Erro ao enfileirar convite:', error);
+    return res.status(500).json({ error: 'Não consegui adicionar esse membro.' });
   }
-  res.json({ status: result.status, email: result.email });
+  const wasSettled = ['added', 'existing', 'invited'].includes(before?.[0]?.status);
+  if (!wasSettled) await runInvites({ eventId: req.params.id, budgetMs: INVITE_REQUEST_BUDGET_MS, baseUrl: requestBaseUrl(req) });
+  const [row] = await readInviteRows(db, req.params.id, [email]).catch(() => []);
+  const status = wasSettled ? 'existing' : (row?.status === 'processing' ? 'pending' : (row?.status || 'pending'));
+  res.json({ status, email, error: status === 'failed' ? (row?.last_error || 'Não foi possível convidar.') : null });
 });
+
+app.get('/api/events/:id/invites', requireAuth, async (req, res) => {
+  try {
+    const rows = await readInviteRows(scopedClient(req.token), req.params.id);
+    res.json({ invites: rows, summary: summarizeInvites(rows) });
+  } catch (err) {
+    logError('Erro ao listar convites:', err);
+    res.status(500).json({ error: 'Não consegui carregar os convites.' });
+  }
+});
+
+// Reenvia só o que falhou; quem já foi adicionado ou convidado não recebe de novo.
+app.post('/api/events/:id/invites/retry', requireAuth, addMemberRateLimit, async (req, res) => {
+  const db = scopedClient(req.token);
+  const { error } = await db.rpc('retry_failed_member_invites', { p_event_id: req.params.id });
+  if (error) {
+    if (String(error.message || '').includes('not event owner')) return res.status(403).json({ error: 'Só o dono do evento pode reenviar convites.' });
+    logError('Erro ao reenviar convites:', error);
+    return res.status(500).json({ error: 'Não consegui reenviar os convites.' });
+  }
+  await runInvites({ eventId: req.params.id, budgetMs: INVITE_REQUEST_BUDGET_MS, baseUrl: requestBaseUrl(req) });
+  const rows = await readInviteRows(db, req.params.id).catch(() => []);
+  res.json({ invites: rows, summary: summarizeInvites(rows) });
+});
+
+// ---------- compartilhamento (só o dono; conferido de novo nas RPCs) ----------
+
+async function shareAction(req, res, action) {
+  const db = scopedClient(req.token);
+  try {
+    const before = await readShare(db, req.params.id);
+    if (!before) return res.status(404).json({ error: 'Evento não encontrado ou você não é o dono dele.' });
+    if (action) {
+      const { error } = await action(db);
+      if (error) {
+        if (String(error.message || '').includes('invalid share mode')) return res.status(400).json({ error: 'Modo de compartilhamento inválido.' });
+        if (String(error.message || '').includes('not event owner')) return res.status(403).json({ error: 'Só o dono do evento pode mudar o compartilhamento.' });
+        throw error;
+      }
+      closeLinkStreams(req.params.id);
+    }
+    res.json(sharePayload(await readShare(db, req.params.id)));
+  } catch (err) {
+    logError('Erro no compartilhamento do evento:', err);
+    res.status(500).json({ error: 'Não consegui atualizar o compartilhamento.' });
+  }
+}
+
+app.get('/api/events/:id/share', requireAuth, (req, res) => shareAction(req, res, null));
+
+app.patch('/api/events/:id/share', requireAuth, (req, res) => {
+  const mode = normalizeShareMode(req.body && req.body.share_mode);
+  if (!mode) return res.status(400).json({ error: 'Modo de compartilhamento inválido.' });
+  return shareAction(req, res, db => db.rpc('set_event_share_mode', { p_event_id: req.params.id, p_mode: mode }));
+});
+
+app.post('/api/events/:id/share/regenerate', requireAuth, (req, res) =>
+  shareAction(req, res, db => db.rpc('regenerate_event_share_token', { p_event_id: req.params.id })));
+
+app.delete('/api/events/:id/share', requireAuth, (req, res) =>
+  shareAction(req, res, db => db.rpc('disable_event_share_link', { p_event_id: req.params.id })));
 
 app.patch('/api/events/:id/members/:userId', requireAuth, async (req, res) => {
   const canEdit = !!req.body.can_edit;
@@ -822,20 +1052,25 @@ app.get('/api/events/:id/save', requireAuth, async (req, res) => {
   res.json({ saved: !!data, can_edit: !!data?.can_edit });
 });
 
-app.post('/api/events/:id/save', requireAuth, async (req, res) => {
+// Entrar na equipe sozinho só é permitido por um link de colaboração (ou pelo
+// link antigo /e/<id>, enquanto durar a transição). Antes, qualquer conta se
+// inseria em qualquer evento só conhecendo o ID.
+async function joinEvent(req, res, rpcArgs) {
   const db = scopedClient(req.token);
-  const { error } = await db.from('event_members').insert({ event_id: req.params.id, user_id: req.user.id });
-  if (error && error.code !== '23505') {
-    logError('Erro ao salvar evento:', error);
-    return res.status(500).json({ error: 'Não consegui salvar esse evento na sua conta.' });
+  const { data: eventId, error } = await db.rpc('join_shared_event', rpcArgs);
+  if (error) {
+    return res.status(403).json({ code: 'join_not_allowed', error: 'Este link não permite entrar na equipe. Peça ao dono do evento pra te adicionar.' });
   }
-  const { data: membership } = await db
-    .from('event_members')
-    .select('can_edit')
-    .eq('event_id', req.params.id)
-    .eq('user_id', req.user.id)
-    .maybeSingle();
-  res.json({ saved: true, can_edit: !!membership?.can_edit });
+  const { data: membership } = await db.from('event_members').select('can_edit')
+    .eq('event_id', eventId).eq('user_id', req.user.id).maybeSingle();
+  res.json({ saved: true, can_edit: !!membership?.can_edit, event_id: eventId });
+}
+
+app.post('/api/events/:id/save', requireAuth, (req, res) => joinEvent(req, res, { p_event_id: req.params.id }));
+
+app.post('/api/share/:token/join', requireAuth, (req, res) => {
+  if (!isValidShareToken(req.params.token)) return res.status(404).json({ code: 'link_invalid', error: LINK_INVALID_MSG });
+  return joinEvent(req, res, { p_token: req.params.token });
 });
 
 app.delete('/api/events/:id/save', requireAuth, async (req, res) => {
@@ -852,92 +1087,233 @@ app.delete('/api/events/:id/save', requireAuth, async (req, res) => {
   res.json({ saved: false });
 });
 
-app.get('/api/events/:id', async (req, res) => {
+// ---------- leitura pública / por equipe, progresso e tempo real ----------
+// Toda leitura e escrita de progresso passa por aqui: o banco não aceita mais
+// acesso direto de visitante (policies de event_progress fechadas), então é
+// este trecho que aplica o modo de acesso de cada evento.
+
+const LINK_INVALID_MSG = 'Este link foi desativado ou substituído. Peça o link atualizado a quem organiza o evento.';
+const TEAM_ONLY_MSG = 'Este evento é restrito à equipe.';
+
+async function roleFor(event, user) {
+  if (!user) return null;
+  if (event.owner_id && event.owner_id === user.id) return 'owner';
+  const { data, error } = await supabaseAdmin.from('event_members').select('can_edit')
+    .eq('event_id', event.id).eq('user_id', user.id).maybeSingle();
+  if (error) throw error;
+  return data ? (data.can_edit ? 'editor' : 'member') : null;
+}
+
+// Devolve null quando o evento/link não existe; senão, o evento com a decisão.
+async function resolveEventContext({ eventId = null, token = null, user = null }) {
+  let access = null;
+  if (token) {
+    if (!isValidShareToken(token)) return null;
+    const { data, error } = await supabaseAdmin.from('event_access').select('*').eq('share_token', token).maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    access = data;
+    eventId = data.event_id;
+  } else if (!isValidEventId(eventId)) {
+    return null;
+  }
+  const { data: event, error } = await supabaseAdmin.from('events').select(EVENT_COLUMNS).eq('id', eventId).maybeSingle();
+  if (error) throw error;
+  if (!event) return null;
+  if (!access) {
+    const result = await supabaseAdmin.from('event_access').select('*').eq('event_id', event.id).maybeSingle();
+    if (result.error) throw result.error;
+    access = result.data;
+  }
+  const role = await roleFor(event, user);
+  const decision = decideAccess({
+    role, via: token ? 'token' : 'id', shareMode: access?.share_mode,
+    tokenMatches: !!token && access?.share_token === token, legacyUntil: access?.legacy_link_until
+  });
+  return { event, access, role, decision };
+}
+
+function eventResponse({ event, access, role, decision }, progressRows) {
+  const isTeam = !!role;
+  return {
+    ...stripPrivateFields(event.data, isTeam),
+    id: event.id,
+    owner_id: isTeam ? event.owner_id : null,
+    allow_member_edit: !!event.allow_member_edit,
+    drive_folder_id: event.drive_folder_id || null,
+    notes: event.notes || '',
+    revision: event.revision ?? 1,
+    progress: foldProgress(progressRows || []),
+    access: {
+      role: role || null,
+      basis: decision.basis,
+      can_write_progress: decision.canWriteProgress,
+      share_mode: access?.share_mode || 'team',
+      legacy_link_until: decision.basis === 'legacy' ? access.legacy_link_until : null
+    }
+  };
+}
+
+function deniedResponse(res, ctx, { token, user }) {
+  if (!ctx) {
+    return res.status(404).json(token
+      ? { code: 'link_invalid', error: LINK_INVALID_MSG }
+      : { code: 'not_found', error: 'Evento não encontrado. O link pode estar errado ou o evento foi removido.' });
+  }
+  return res.status(403).json({ code: 'team_only', error: TEAM_ONLY_MSG, login_required: !user });
+}
+
+async function sendEvent(req, res, { eventId = null, token = null }) {
   if (!supabase || !supabaseAdmin) {
     return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY não configuradas no servidor.' });
   }
-
-  const id = req.params.id;
-  // service role (não a anon key) de propósito: a policy de SELECT do `events` não
-  // libera mais a role `anon` (só assim dava pra alguém buscar a tabela inteira direto
-  // no PostgREST usando a mesma anon key pública que o navegador recebe via /api/config,
-  // ignorando esse filtro por id). O `event_progress` continua com a role `anon`, que
-  // segue liberada nele de propósito.
-  const [{ data: row, error }, { data: progressRows }] = await Promise.all([
-    supabaseAdmin.from('events').select('data, owner_id, allow_member_edit, drive_folder_id, notes').eq('id', id).maybeSingle(),
-    supabase.from('event_progress').select('action, payload').eq('event_id', id).order('created_at', { ascending: true })
-  ]);
-
-  if (error || !row) {
-    return res.status(404).json({ error: 'Evento não encontrado. O link pode estar errado ou o evento foi removido.' });
+  try {
+    const user = await optionalUser(req);
+    const ctx = await resolveEventContext({ eventId, token, user });
+    if (!ctx || !ctx.decision.canRead) return deniedResponse(res, ctx, { token, user });
+    const { data: progressRows, error } = await supabaseAdmin.from('event_progress')
+      .select('action, payload').eq('event_id', ctx.event.id).order('created_at', { ascending: true });
+    if (error) throw error;
+    res.set('Cache-Control', 'no-store');
+    res.json(eventResponse(ctx, progressRows));
+  } catch (err) {
+    logError('Erro ao carregar evento:', err);
+    res.status(503).json({ error: 'Não foi possível carregar o evento agora. Tente novamente.' });
   }
-  res.json({ ...row.data, owner_id: row.owner_id, allow_member_edit: !!row.allow_member_edit, drive_folder_id: row.drive_folder_id || null, notes: row.notes || '', progress: foldProgress(progressRows || []) });
-});
+}
 
-// ---------- progresso em tempo real (SSE) ----------
+app.get('/api/events/:id', (req, res) => sendEvent(req, res, { eventId: req.params.id }));
+app.get('/api/share/:token', (req, res) => sendEvent(req, res, { token: req.params.token }));
 
 const PROGRESS_ACTIONS = new Set(['status', 'record', 'unrecord', 'mission', 'unmission', 'reset']);
-const progressSubscribers = new Map(); // eventId -> Set<res>
+// eventId -> Set<{ res, basis }>. basis 'team' (logado), 'link' ou 'legacy'.
+const progressSubscribers = new Map();
 
 function broadcastProgress(eventId, message) {
   const subs = progressSubscribers.get(eventId);
   if (!subs) return;
   const chunk = `data: ${JSON.stringify(message)}\n\n`;
-  for (const res of subs) res.write(chunk);
+  for (const sub of subs) sub.res.write(chunk);
 }
 
-app.post('/api/events/:id/progress', progressRateLimit, async (req, res) => {
-  const id = req.params.id;
-  const { action, payload } = req.body || {};
+// Mudança de modo, link novo ou link desativado: quem estava conectado pelo
+// link (ou pelo endereço antigo) é desconectado na hora e precisa reabrir —
+// se o link ainda valer, reconecta; se foi revogado, recebe o aviso.
+function closeLinkStreams(eventId) {
+  const subs = progressSubscribers.get(eventId);
+  if (!subs) return;
+  for (const sub of [...subs]) {
+    if (sub.basis === 'team') continue;
+    sub.res.write(`data: ${JSON.stringify({ action: 'access_changed' })}\n\n`);
+    sub.res.end();
+    subs.delete(sub);
+  }
+}
 
+async function handleProgress(req, res, { eventId = null, token = null }) {
+  const { action, payload } = req.body || {};
   if (!PROGRESS_ACTIONS.has(action)) {
     return res.status(400).json({ error: 'Ação de progresso inválida.' });
   }
-  if (!supabase) {
-    return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_ANON_KEY não configuradas no servidor.' });
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor.' });
   }
-
-  const { error } = await supabase.from('event_progress').insert({ event_id: id, action, payload: payload || {} });
-  if (error) {
-    logError('Erro ao salvar progresso:', error);
-    return res.status(500).json({ error: 'Não consegui salvar o progresso.' });
+  try {
+    const user = await optionalUser(req);
+    const ctx = await resolveEventContext({ eventId, token, user });
+    if (!ctx || !ctx.decision.canRead) return deniedResponse(res, ctx, { token, user });
+    if (!ctx.decision.canWriteProgress) {
+      return res.status(403).json({ code: 'read_only', error: 'Este link só permite visualizar. Peça o link de colaboração a quem organiza o evento.' });
+    }
+    const { error } = await supabaseAdmin.from('event_progress').insert({ event_id: ctx.event.id, action, payload: payload || {} });
+    if (error) throw error;
+    broadcastProgress(ctx.event.id, { action, payload: payload || {} });
+    res.json({ ok: true });
+  } catch (err) {
+    logError('Erro ao salvar progresso:', err);
+    res.status(500).json({ error: 'Não consegui salvar o progresso.' });
   }
+}
 
-  broadcastProgress(id, { action, payload: payload || {} });
-  res.json({ ok: true });
+app.post('/api/events/:id/progress', progressRateLimit, (req, res) => handleProgress(req, res, { eventId: req.params.id }));
+app.post('/api/share/:token/progress', progressRateLimit, (req, res) => handleProgress(req, res, { token: req.params.token }));
+
+// EventSource não manda cabeçalho de autorização. Quem é da equipe troca o
+// login por um ticket curto e usa o ticket na URL do stream — o token de
+// sessão nunca vai pra URL.
+const streamTickets = new Map(); // ticket -> { eventId, exp }
+const STREAM_TICKET_TTL_MS = 60 * 1000;
+
+app.post('/api/events/:id/stream-ticket', requireAuth, async (req, res) => {
+  try {
+    const ctx = await resolveEventContext({ eventId: req.params.id, user: req.user });
+    if (!ctx || !ctx.role) return deniedResponse(res, ctx, { user: req.user });
+    const now = Date.now();
+    for (const [key, value] of streamTickets) if (value.exp <= now) streamTickets.delete(key);
+    const ticket = crypto.randomBytes(24).toString('base64url');
+    streamTickets.set(ticket, { eventId: ctx.event.id, exp: now + STREAM_TICKET_TTL_MS });
+    res.json({ ticket });
+  } catch (err) {
+    logError('Erro ao liberar tempo real:', err);
+    res.status(503).json({ error: 'Não foi possível conectar o tempo real agora.' });
+  }
 });
 
-app.get('/api/events/:id/stream', (req, res) => {
-  const id = req.params.id;
+function openStream(req, res, eventId, basis) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive'
   });
   res.write(':ok\n\n');
-
-  if (!progressSubscribers.has(id)) progressSubscribers.set(id, new Set());
-  progressSubscribers.get(id).add(res);
-
+  if (!progressSubscribers.has(eventId)) progressSubscribers.set(eventId, new Set());
+  const sub = { res, basis };
+  progressSubscribers.get(eventId).add(sub);
   const heartbeat = setInterval(() => res.write(':hb\n\n'), 25000);
-
   req.on('close', () => {
     clearInterval(heartbeat);
-    progressSubscribers.get(id)?.delete(res);
+    progressSubscribers.get(eventId)?.delete(sub);
   });
+}
+
+app.get('/api/events/:id/stream', async (req, res) => {
+  const ticket = typeof req.query.ticket === 'string' ? req.query.ticket : null;
+  if (ticket) {
+    const entry = streamTickets.get(ticket);
+    if (!entry || entry.exp <= Date.now() || entry.eventId !== req.params.id) {
+      return res.status(401).json({ code: 'ticket_expired', error: 'Conexão em tempo real expirada.' });
+    }
+    return openStream(req, res, entry.eventId, 'team');
+  }
+  try {
+    const ctx = await resolveEventContext({ eventId: req.params.id });
+    if (!ctx || !ctx.decision.canRead) return deniedResponse(res, ctx, {});
+    openStream(req, res, ctx.event.id, ctx.decision.basis);
+  } catch (err) {
+    logError('Erro ao abrir tempo real:', err);
+    res.status(503).json({ error: 'Não foi possível conectar o tempo real agora.' });
+  }
 });
 
-app.get('/e/:id', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+app.get('/api/share/:token/stream', async (req, res) => {
+  try {
+    const ctx = await resolveEventContext({ token: req.params.token });
+    if (!ctx || !ctx.decision.canRead) return deniedResponse(res, ctx, { token: req.params.token });
+    openStream(req, res, ctx.event.id, ctx.decision.basis);
+  } catch (err) {
+    logError('Erro ao abrir tempo real:', err);
+    res.status(503).json({ error: 'Não foi possível conectar o tempo real agora.' });
+  }
 });
 
-app.get('/e/:id/editar', (req, res) => {
+function sendIndex(req, res) {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+}
 
-app.get('/historico', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('/e/:id', sendIndex);
+app.get('/e/:id/editar', sendIndex);
+app.get('/s/:token', sendIndex);
+app.get('/historico', sendIndex);
 
 // Rede de segurança pra erro que escapou de todo try/catch das rotas acima
 // (as rotas já tratam seus próprios erros e nunca chegam a chamar next(err),

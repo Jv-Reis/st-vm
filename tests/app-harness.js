@@ -1,0 +1,77 @@
+// Executa o app real (public/app.js) com DOM, autenticação e HTTP simulados.
+// Não acessa contas, IA nem Calendar. Os testes acionam os mesmos handlers
+// dos botões da página.
+import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
+import { webcrypto } from 'node:crypto';
+import { mergeGeneratedRoteiro, hasRoteiro } from '../public/roteiro-draft.js';
+import { diffEventDrafts, draftToText } from '../public/event-diff.js';
+
+export const VALID_CONFIG = { supabaseUrl: 'https://captura-test.supabase.co', supabaseAnonKey: 'anon-test-key' };
+
+function jsonResponse(data, { ok = true, status = ok ? 200 : 400, headers = {} } = {}) {
+  return { ok, status, headers: { get: k => headers[k] ?? null }, json: async () => data };
+}
+export { jsonResponse };
+
+// routes(url, options, calls) pode devolver uma resposta pra sobrescrever o padrão.
+export async function browser({
+  event, path = '/', parse, confirm = true, pending, storage: initialStorage = {},
+  session = { user: { id: 'owner', email: 'dono@example.com' }, access_token: 'test' },
+  config = VALID_CONFIG, routes, caches, supabaseGlobal = true, generated, online = true
+} = {}) {
+  const elements = new Map(), calls = [], alerts = [], confirmations = [], clipboard = [];
+  function element(id) {
+    if (!elements.has(id)) elements.set(id, {
+      id, value: '', hidden: false, disabled: false, checked: false, readOnly: false, innerHTML: '', textContent: '', style: {}, dataset: {}, handlers: {},
+      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+      addEventListener(type, fn) { this.handlers[type] = fn; },
+      querySelectorAll() { return []; }, setAttribute() {}, focus() {}, replaceChildren() {}, select() {}, scrollIntoView() {}
+    });
+    return elements.get(id);
+  }
+  const storage = new Map(Object.entries(initialStorage));
+  if (pending) storage.set('captura_pending_roteiro', JSON.stringify(pending));
+  const location = { pathname: path, search: '', origin: 'https://captura.example' };
+  const sessionState = { current: session };
+  const context = {
+    mergeGeneratedRoteiro: (existing, result) => mergeGeneratedRoteiro(existing, result, () => webcrypto.randomUUID()),
+    hasRoteiro, diffEventDrafts, draftToText,
+    document: { getElementById: element, querySelectorAll: () => [], querySelector: () => null, addEventListener() {}, activeElement: null, visibilityState: 'visible' },
+    window: { location, addEventListener() {}, scrollTo() {} },
+    navigator: { onLine: online, clipboard: { writeText: async text => { clipboard.push(text); } } },
+    history: { pushState(a, b, url) { location.pathname = url; }, replaceState(a, b, url) { location.pathname = url; } },
+    localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
+    supabase: supabaseGlobal ? { createClient: () => ({ auth: {
+      getSession: async () => ({ data: { session: sessionState.current } }),
+      onAuthStateChange() {}, signOut: async () => {}
+    } }) } : undefined,
+    fetch: async (url, options = {}) => {
+      calls.push({ url, ...options });
+      if (routes) {
+        const custom = await routes(url, options, calls);
+        if (custom) return custom;
+      }
+      if (url === '/api/config') return jsonResponse(config);
+      if (url === '/api/parse-roteiro') return parse ? parse(options) : jsonResponse(generated || {
+        event_title: 'Título da IA', phases: [{ key: 'p1', label: 'Cerimônia' }],
+        scenes: [{ id: 'c1', phase: 'p1', title: 'Entrada' }], missions: []
+      });
+      if (event && url === '/api/events/existing' && !options.method) return jsonResponse(event);
+      if (options.method === 'PATCH' || options.method === 'POST') return jsonResponse({ id: 'created', revision: 2 });
+      return jsonResponse({});
+    },
+    alert: text => alerts.push(text), confirm: text => { confirmations.push(text); return confirm; },
+    URLSearchParams, AbortController, console, setInterval() {}, clearInterval() {}, setTimeout, clearTimeout,
+    EventSource: class { constructor(url) { this.url = url; this.readyState = 0; } close() {} }
+  };
+  if (caches) context.caches = caches;
+  const code = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '');
+  vm.runInNewContext(code, context);
+  const settle = async () => { for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve)); };
+  await settle();
+  return {
+    element, calls, alerts, confirmations, clipboard, location, settle, storage, sessionState,
+    click: async id => { await element(id).handlers.click({ target: element(id), preventDefault() {} }); await settle(); }
+  };
+}

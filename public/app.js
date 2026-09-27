@@ -1,4 +1,5 @@
 import { mergeGeneratedRoteiro, hasRoteiro } from './roteiro-draft.js';
+import { diffEventDrafts, draftToText } from './event-diff.js';
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
@@ -76,10 +77,23 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const driveFolderAction = document.getElementById('driveFolderAction');
   const calendarLinkBtn = document.getElementById('calendarLinkBtn');
   const driveFolderLinkBtn = document.getElementById('driveFolderLinkBtn');
+  const initErrorView = document.getElementById('initErrorView');
+  const accessView = document.getElementById('accessView');
+  const eventLinkHint = document.getElementById('eventLinkHint');
+  const publishSummary = document.getElementById('publishSummary');
+  const publishSummaryList = document.getElementById('publishSummaryList');
+  const retryInvitesBtn = document.getElementById('retryInvitesBtn');
+  const invitesList = document.getElementById('invitesList');
+  const invitesStatus = document.getElementById('invitesStatus');
+  const membersRetryInvitesBtn = document.getElementById('membersRetryInvitesBtn');
+  const shareSettings = document.getElementById('shareSettings');
+  const conflictPanel = document.getElementById('conflictPanel');
+  const conflictDiff = document.getElementById('conflictDiff');
+  const conflictStatus = document.getElementById('conflictStatus');
   let roteiroSource = null;
   let activeGeneration = null;
 
-  const VIEWS = { loading: loadingView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView, members: membersView };
+  const VIEWS = { loading: loadingView, initError: initErrorView, access: accessView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView, members: membersView };
   function showView(name){
     if(name !== 'import' && activeGeneration) {
       activeGeneration.abort();
@@ -87,7 +101,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
     if(name === 'import') updateImportContext();
     Object.keys(VIEWS).forEach(key => { VIEWS[key].hidden = key !== name; });
-    authStrip.hidden = (name === 'report' || name === 'loading');
+    authStrip.hidden = (name === 'report' || name === 'loading' || name === 'initError');
     authStrip.classList.toggle('auth-strip--static', name === 'app');
     window.scrollTo(0, 0);
   }
@@ -110,6 +124,17 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let eventSaved = false;
   let progressStream = null;
   let streamHadError = false;
+  let streamRetryTimer = null;
+  let streamRetryDelay = 3000;
+  // Como este aparelho chegou ao evento: pelo link (/s/<token>) ou pelo
+  // endereço /e/<id> (equipe logada ou link antigo), e o que isso permite.
+  let currentAccess = { via: 'id', token: null, role: null, basis: null, canWriteProgress: true, shareMode: null, legacyUntil: null };
+  let editingRevision = null;
+  let editingLoadedNotes = null;
+  let editingShare = null;
+  let currentShare = null;
+  let conflictState = null;
+  let invitePollTimer = null;
 
   let sb = null;
   let currentUser = null;
@@ -118,6 +143,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const PENDING_ROTEIRO_KEY = 'captura_pending_roteiro';
   const HERO_DISMISSED_KEY = 'captura_hero_dismissed';
   const HISTORY_VIEW_KEY = 'captura_history_view';
+  const OFFLINE_EVENTS_KEY = 'captura_offline_events';
+  const RETURN_TO_KEY = 'captura_return_to';
+  const CONFLICT_DRAFT_PREFIX = 'captura_conflict_draft:';
+  const SHARE_MODES = ['team', 'view', 'collab'];
   let historyViewMode = localStorage.getItem(HISTORY_VIEW_KEY) || 'list';
   let historyEvents = [];
   let calMonthCursor = null;
@@ -249,7 +278,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       return;
     }
     if(!currentUser){
-      localStorage.setItem(PENDING_ROTEIRO_KEY, JSON.stringify({ text, draft: roteiroSource, editingEventId }));
+      localStorage.setItem(PENDING_ROTEIRO_KEY, JSON.stringify({ text, draft: roteiroSource, editingEventId, editing: editingSnapshot() }));
       showView('login');
       loginStatus.textContent = 'Faça login pra gerar o checklist — seu roteiro fica salvo e a geração continua assim que você entrar.';
       loginStatus.hidden = false;
@@ -274,6 +303,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       member_emails: Array.isArray(data.member_emails) ? data.member_emails : [],
       allow_member_edit: !!data.allow_member_edit,
       notes: data.notes || '',
+      share_mode: SHARE_MODES.includes(data.share_mode) ? data.share_mode : null,
       phases: (data.phases || []).map(p => ({
         key: p.key || ('fase_' + Math.random().toString(36).slice(2, 8)),
         label: p.label || 'Fase',
@@ -302,6 +332,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function loadPreview(data, existing = null){
     generatedInPreview = hasRoteiro(data);
     draft = mergeGeneratedRoteiro(existing, normalizeDraft(data));
+    // evento novo começa como sempre funcionou: link para colaborar
+    if(!editingEventId && !draft.share_mode) draft.share_mode = 'collab';
     updatePreviewContext();
     renderPreviewAll();
     showView('preview');
@@ -332,6 +364,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     previewDriveFolders.value = (draft.drive_folders || []).join('\n');
     renderDriveFolderAction();
     validateEventDates();
+    renderShareSettings();
 
     previewPhasesContainer.innerHTML = draft.phases.map((phase, pIdx) => {
       const scenesInPhase = draft.scenes
@@ -571,7 +604,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
 
     if(!currentUser){
-      localStorage.setItem(PENDING_DRAFT_KEY, JSON.stringify({ draft, editingEventId, generatedInPreview }));
+      localStorage.setItem(PENDING_DRAFT_KEY, JSON.stringify({ draft, editingEventId, generatedInPreview, editing: editingSnapshot() }));
       showView('login');
       loginStatus.textContent = 'Faça login pra publicar — seu roteiro fica salvo e volta pra revisão assim que você entrar.';
       loginStatus.hidden = false;
@@ -579,6 +612,13 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
 
     const wasEditing = editingEventId;
+    // Com conflito aberto, salvar apagaria a alteração da outra pessoa.
+    if(wasEditing && conflictState && conflictState.eventId === wasEditing){
+      alert('Este evento foi alterado por outra pessoa. Compare as versões e recarregue a mais recente antes de salvar (copie seu rascunho se precisar).');
+      conflictPanel.hidden = false;
+      window.scrollTo(0, 0);
+      return;
+    }
     publishBtn.disabled = true;
     publishBtn.textContent = wasEditing ? 'Salvando…' : 'Publicando…';
     try {
@@ -589,19 +629,34 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       const resp = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify(draft)
+        body: JSON.stringify(buildSaveBody(wasEditing))
       });
       const result = await resp.json();
+      if(resp.status === 409 && result.code === 'conflict'){
+        showConflict(wasEditing, result.current);
+        return;
+      }
+      // Rascunho sem versão conhecida (aba antiga): trata como conflito com a atual.
+      if(resp.status === 428 && result.code === 'revision_required'){
+        const latest = await fetchEventData('id', wasEditing);
+        if(latest.resp.ok){ showConflict(wasEditing, latest.data); return; }
+      }
       if(!resp.ok){
         throw new Error(result.error || 'Erro ao salvar o evento.');
       }
       const id = wasEditing || result.id;
+      const wasOwnerSave = !wasEditing || isOwner();
       if(!wasEditing) currentOwnerId = currentUser.id;
       currentDriveFolderId = draft.drive_folder_id || null;
+      clearConflict(wasEditing);
       editingEventId = null;
+      editingRevision = null;
+      setAccess({ via: 'id', role: isOwner() ? 'owner' : (currentMemberCanEdit ? 'editor' : 'member'), canWriteProgress: true, shareMode: result.share?.share_mode || draft.share_mode });
+      if(result.share) currentShare = result.share;
       loadChecklist(draft);
       history.pushState({}, '', '/e/' + id);
       showEventLink(id);
+      renderPublishSummary(result.members, { canRetry: wasOwnerSave });
     } catch(err){
       alert('Não consegui salvar (' + (err.message || 'erro desconhecido') + ').');
     } finally {
@@ -609,6 +664,20 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       updatePreviewContext();
     }
   });
+
+  // Corpo do salvamento. Na edição vai a versão que foi aberta (o servidor
+  // recusa se outra pessoa salvou depois) e as notas só se mudaram aqui —
+  // senão uma edição do roteiro apagaria anotações feitas ao vivo.
+  function buildSaveBody(wasEditing){
+    const body = Object.assign({}, draft);
+    if(wasEditing){
+      body.base_revision = editingRevision;
+      if(draft.notes === editingLoadedNotes) delete body.notes;
+      // modo de acesso só vai se o dono mudou de fato nesta tela
+      if(!editingShare || draft.share_mode === editingShare.share_mode) delete body.share_mode;
+    }
+    return body;
+  }
 
   // ---------- live checklist ----------
 
@@ -706,8 +775,32 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
     updateAll();
     updateMissions();
+    hidePublishSummary();
+    applyReadOnlyState();
 
     showView('app');
+  }
+
+  // Link só de visualização: a checklist aparece, mas marcar progresso fica
+  // bloqueado aqui também (o servidor recusa de qualquer forma).
+  function applyReadOnlyState(){
+    const readOnly = !currentAccess.canWriteProgress;
+    appView.classList.toggle('is-readonly', readOnly);
+    document.querySelectorAll('.status-btn, .mission-chip').forEach(btn => { btn.disabled = readOnly; });
+    document.getElementById('resetBtn').hidden = readOnly;
+    const sub = document.getElementById('eventSub');
+    const base = sub.textContent.replace(/ · somente visualização$/, '');
+    sub.textContent = readOnly ? base + ' · somente visualização' : base;
+  }
+
+  function setAccess(next){
+    currentAccess = Object.assign({ via: 'id', token: null, role: null, basis: null, canWriteProgress: true, shareMode: null, legacyUntil: null }, next);
+  }
+
+  function accessFromData(data, via, token){
+    const a = data && data.access;
+    if(!a) return { via, token, role: null, basis: null, canWriteProgress: true, shareMode: null, legacyUntil: null };
+    return { via, token, role: a.role || null, basis: a.basis || null, canWriteProgress: !!a.can_write_progress, shareMode: a.share_mode || null, legacyUntil: a.legacy_link_until || null };
   }
 
   function backToImport(){
@@ -719,6 +812,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     disconnectProgressStream();
     currentOwnerId = null;
     editingEventId = null;
+    editingRevision = null;
+    editingShare = null;
+    currentShare = null;
+    setAccess({});
     updateEditLinkVisibility();
     history.pushState({}, '', '/');
   }
@@ -742,14 +839,41 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     return 'https://calendar.google.com/calendar/render?' + params.toString();
   }
 
+  function formatDateBR(iso){
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  // Qual link mostrar pra copiar depende de quem está vendo: o dono vê o link
+  // de compartilhamento (se o modo permite), a equipe vê o endereço da equipe,
+  // e quem entrou por um link vê o próprio link.
+  function eventLinkFor(id){
+    const origin = window.location.origin;
+    const teamLink = origin + '/e/' + id;
+    if(currentAccess.role === 'owner'){
+      const mode = currentShare && currentShare.share_mode;
+      if(currentShare && currentShare.share_path && mode !== 'team'){
+        return { link: origin + currentShare.share_path, label: 'Link de compartilhamento', hint: mode === 'view' ? 'Quem tiver este link só visualiza. Mude em "Editar evento".' : 'Quem tiver este link vê e marca progresso, sem conta. Mude em "Editar evento".' };
+      }
+      return { link: teamLink, label: 'Link da equipe', hint: mode === 'team' ? 'Somente equipe: só abre pra membros com conta.' : 'Link de compartilhamento desativado: só abre pra membros com conta.' };
+    }
+    if(currentAccess.role) return { link: teamLink, label: 'Link da equipe', hint: 'Abre pra quem é da equipe, com conta.' };
+    if(currentAccess.via === 'token') return { link: origin + '/s/' + currentAccess.token, label: 'Link do evento', hint: currentAccess.canWriteProgress ? '' : 'Este link só permite visualizar.' };
+    const until = currentAccess.legacyUntil ? formatDateBR(currentAccess.legacyUntil) : '';
+    return { link: teamLink, label: 'Link do evento (endereço antigo)', hint: until ? 'Endereço antigo: deixa de abrir sem conta em ' + until + '. Peça o link novo a quem organiza.' : '' };
+  }
+
   function showEventLink(id){
     const row = document.getElementById('eventLinkRow');
     const input = document.getElementById('eventLinkInput');
-    const link = window.location.origin + '/e/' + id;
+    const info = eventLinkFor(id);
+    const link = info.link;
     input.value = link;
+    document.getElementById('eventLinkLabel').textContent = info.label;
+    eventLinkHint.textContent = info.hint;
     row.hidden = false;
     currentEventId = id;
-    connectProgressStream(id);
+    connectProgressStream();
     updateEditLinkVisibility();
     refreshSaveButton();
     refreshManageMembersButton();
@@ -861,8 +985,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   });
   window.addEventListener('pagehide', flushNotesIfDirty);
 
+  // Entrar na equipe sozinho só é possível por link de colaboração (ou pelo
+  // endereço antigo durante a transição). Quem já é da equipe pode sair.
+  function canJoinByLink(){
+    return currentAccess.shareMode === 'collab' && (currentAccess.via === 'token' || currentAccess.basis === 'legacy');
+  }
+
   async function refreshSaveButton(){
-    const eligible = currentEventId && currentUser && !isOwner();
+    const eligible = currentEventId && currentUser && !isOwner() && (!!currentAccess.role || canJoinByLink());
     if(!eligible){
       saveEventBtn.hidden = true;
       return;
@@ -886,10 +1016,15 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       const token = await accessToken();
       if(!token) throw new Error('Sessão expirada. Faça login de novo.');
       const method = eventSaved ? 'DELETE' : 'POST';
-      const resp = await fetch('/api/events/' + currentEventId + '/save', { method, headers: { Authorization: 'Bearer ' + token } });
+      const url = (!eventSaved && currentAccess.via === 'token')
+        ? '/api/share/' + encodeURIComponent(currentAccess.token) + '/join'
+        : '/api/events/' + currentEventId + '/save';
+      const resp = await fetch(url, { method, headers: { Authorization: 'Bearer ' + token } });
       const result = await resp.json();
       if(!resp.ok) throw new Error(result.error || 'Erro ao salvar.');
       setSaveButtonState(result.saved, result.can_edit);
+      // entrar ou sair da equipe muda o que este aparelho pode fazer
+      resyncProgress();
     } catch(err){
       alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
     } finally {
@@ -933,10 +1068,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       const members = result.members || [];
       membersList.innerHTML = members.length
         ? members.map(memberRowHTML).join('')
-        : '<div class="history-empty">Ninguém salvou este evento ainda.</div>';
+        : '<div class="history-empty">Ninguém na equipe ainda.</div>';
     } catch(err){
       membersList.innerHTML = '<div class="history-empty">Não consegui carregar a equipe (' + escapeHTML(err.message || 'erro') + ').</div>';
     }
+    renderMembersInvites();
   }
 
   manageMembersBtn.addEventListener('click', function(){
@@ -961,7 +1097,14 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       });
       const result = await resp.json();
       if(!resp.ok) throw new Error(result.error || 'Erro ao adicionar.');
-      addMemberStatus.textContent = result.status === 'invited' ? 'Convite enviado por email.' : 'Adicionado à equipe.';
+      const messages = {
+        invited: 'Convite enviado por email.',
+        added: 'Adicionado à equipe.',
+        existing: 'Essa pessoa já está na equipe.',
+        pending: 'Convite registrado — o envio termina em instantes.',
+        failed: 'Não foi possível convidar: ' + (result.error || 'erro no envio') + ' Você pode reenviar mais abaixo.'
+      };
+      addMemberStatus.textContent = messages[result.status] || 'Pedido registrado.';
       addMemberEmailInput.value = '';
       showMembersView();
     } catch(err){
@@ -1115,6 +1258,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     notesStatus.textContent = '';
     clearTimeout(notesSaveTimer);
     notesDirty = false;
+    eventLinkHint.textContent = '';
+    hidePublishSummary();
     refreshNotesEditability();
   }
 
@@ -1141,24 +1286,27 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     });
   }
 
-  async function enqueueProgress(eventId, action, payload){
+  // Cada ação guarda por onde deve ser enviada: pelo link (/s/<token>) ou
+  // pelo endereço do evento (equipe logada ou link antigo).
+  function currentProgressRoute(){
+    if(currentAccess.via === 'token' && currentAccess.token) return { kind: 'token', key: currentAccess.token };
+    return { kind: 'id', key: currentEventId, auth: !!currentAccess.role };
+  }
+
+  async function enqueueProgress(eventId, action, payload, route){
     try {
       const db = await openOfflineDB();
       await new Promise((resolve, reject) => {
         const tx = db.transaction(OFFLINE_STORE, 'readwrite');
-        tx.objectStore(OFFLINE_STORE).add({ eventId, action, payload, ts: Date.now() });
+        tx.objectStore(OFFLINE_STORE).add({ eventId, action, payload, route, ts: Date.now() });
         tx.oncomplete = resolve;
         tx.onerror = () => reject(tx.error);
       });
       db.close();
     } catch(err){
-      // sem IndexedDB (aba anônima antiga, navegador incomum): mantém o comportamento
-      // anterior como último recurso, tentando mandar direto sem fila.
-      fetch('/api/events/' + eventId + '/progress', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, payload })
-      }).catch(function(){});
+      // sem IndexedDB (aba anônima antiga, navegador incomum): último recurso,
+      // tenta mandar direto sem fila.
+      postProgress({ eventId, action, payload, route }).catch(function(){});
     }
   }
 
@@ -1191,7 +1339,23 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     } catch(err){}
   }
 
+  // Itens antigos (antes do controle de acesso) não têm rota: vão pelo
+  // endereço do evento, com login se houver.
+  async function postProgress(item){
+    const route = item.route || { kind: 'id', key: item.eventId, auth: true };
+    const url = route.kind === 'token'
+      ? '/api/share/' + encodeURIComponent(route.key) + '/progress'
+      : '/api/events/' + encodeURIComponent(route.key) + '/progress';
+    const headers = { 'Content-Type': 'application/json' };
+    if(route.kind === 'id' && route.auth){
+      const token = await accessToken().catch(() => null);
+      if(token) headers.Authorization = 'Bearer ' + token;
+    }
+    return fetch(url, { method: 'POST', headers, body: JSON.stringify({ action: item.action, payload: item.payload }) });
+  }
+
   let flushingOfflineQueue = false;
+  let droppedProgressCount = 0;
 
   async function flushProgressQueue(){
     if(flushingOfflineQueue) return;
@@ -1199,19 +1363,25 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     try {
       const items = (await readOfflineQueue()).sort((a, b) => a.id - b.id);
       for(const item of items){
+        let resp;
         try {
-          const resp = await fetch('/api/events/' + item.eventId + '/progress', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: item.action, payload: item.payload })
-          });
-          if(!resp.ok) throw new Error('resposta não-ok');
-          await removeFromOfflineQueue(item.id);
+          resp = await postProgress(item);
         } catch(err){
-          // sem conexão (ou erro do servidor): para por aqui e tenta de novo depois,
-          // pra não mandar as ações seguintes fora da ordem original
-          break;
+          break; // sem conexão: tenta de novo depois, mantendo a ordem original
         }
+        if(resp.ok){
+          await removeFromOfflineQueue(item.id);
+          continue;
+        }
+        // Recusa definitiva (link revogado, modo mudou, evento excluído,
+        // ação malformada): nunca vai passar, então sai da fila em vez de
+        // travar as ações seguintes. 401/5xx/429 podem passar depois.
+        if([400, 403, 404, 410].includes(resp.status)){
+          await removeFromOfflineQueue(item.id);
+          droppedProgressCount++;
+          continue;
+        }
+        break;
       }
     } finally {
       flushingOfflineQueue = false;
@@ -1224,6 +1394,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const textEl = document.getElementById('syncStatusText');
     if(!el) return;
     const count = (await readOfflineQueue()).length;
+    if(count === 0 && droppedProgressCount > 0){
+      el.hidden = false;
+      el.classList.add('sync-status--offline');
+      textEl.textContent = droppedProgressCount + (droppedProgressCount === 1 ? ' ação não foi salva' : ' ações não foram salvas') + ': o acesso a este evento mudou';
+      return;
+    }
     if(count === 0){
       el.hidden = true;
       el.classList.remove('sync-status--offline');
@@ -1245,32 +1421,67 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   // ---------- progresso em tempo real ----------
 
   function sendProgress(action, payload){
-    if(!currentEventId) return;
-    enqueueProgress(currentEventId, action, payload).then(function(){
+    if(!currentEventId || !currentAccess.canWriteProgress) return;
+    enqueueProgress(currentEventId, action, payload, currentProgressRoute()).then(function(){
       updateSyncStatus();
       flushProgressQueue();
     });
   }
 
-  function connectProgressStream(id){
-    if(progressStream) progressStream.close();
+  // EventSource não manda cabeçalho de login: a equipe pede um ticket curto
+  // e usa na URL. Quem entrou por link conecta pelo próprio link.
+  async function streamUrl(){
+    if(currentAccess.via === 'token' && currentAccess.token) return '/api/share/' + encodeURIComponent(currentAccess.token) + '/stream';
+    if(currentAccess.role){
+      const token = await accessToken().catch(() => null);
+      if(token){
+        const resp = await fetch('/api/events/' + encodeURIComponent(currentEventId) + '/stream-ticket', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+        const result = await resp.json().catch(() => ({}));
+        if(resp.ok && result.ticket) return '/api/events/' + encodeURIComponent(currentEventId) + '/stream?ticket=' + encodeURIComponent(result.ticket);
+      }
+    }
+    return '/api/events/' + encodeURIComponent(currentEventId) + '/stream';
+  }
+
+  async function connectProgressStream(){
+    clearTimeout(streamRetryTimer);
+    if(progressStream){ progressStream.close(); progressStream = null; }
+    const eventId = currentEventId;
+    if(!eventId) return;
+    let url;
+    try { url = await streamUrl(); } catch(err){ url = null; }
+    if(!url || currentEventId !== eventId) return;
     streamHadError = false;
-    progressStream = new EventSource('/api/events/' + id + '/stream');
-    progressStream.onmessage = function(e){
+    const stream = new EventSource(url);
+    progressStream = stream;
+    stream.onmessage = function(e){
       let msg;
       try { msg = JSON.parse(e.data); } catch(err){ return; }
       handleRemoteProgress(msg);
     };
-    progressStream.onerror = function(){ streamHadError = true; };
-    progressStream.onopen = function(){
+    stream.onerror = function(){
+      streamHadError = true;
+      // conexão recusada (ticket vencido, link revogado): o navegador não
+      // tenta de novo sozinho, então reabre com um ticket novo, com espera
+      // crescente pra não martelar o servidor.
+      if(stream.readyState === 2 && progressStream === stream){
+        streamRetryTimer = setTimeout(function(){
+          if(currentEventId === eventId) connectProgressStream().then(() => resyncProgress());
+        }, streamRetryDelay);
+        streamRetryDelay = Math.min(streamRetryDelay * 2, 60000);
+      }
+    };
+    stream.onopen = function(){
+      streamRetryDelay = 3000;
       if(streamHadError){
         streamHadError = false;
-        resyncProgress(id);
+        resyncProgress();
       }
     };
   }
 
   function disconnectProgressStream(){
+    clearTimeout(streamRetryTimer);
     if(progressStream){ progressStream.close(); progressStream = null; }
     currentEventId = null;
   }
@@ -1284,6 +1495,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     else if(action === 'mission') applyMissionKey(payload.cat + '-' + (payload.itemKey ?? payload.idx), true);
     else if(action === 'unmission') applyMissionKey(payload.cat + '-' + (payload.itemKey ?? payload.idx), false);
     else if(action === 'reset') resetAllProgress();
+    else if(action === 'access_changed'){
+      // o dono mudou o compartilhamento: confere de novo se este aparelho ainda tem acesso
+      if(progressStream){ progressStream.close(); progressStream = null; }
+      resyncProgress({ reconnect: true });
+    }
     else if(action === 'notes'){
       // não sobrescreve se a pessoa estiver digitando ali agora, ou se já tem uma
       // edição local pendente de salvar — a atualização dela mesma vai chegar
@@ -1292,19 +1508,53 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
-  function resyncProgress(id){
-    fetch('/api/events/' + id).then(function(r){ return r.json(); }).then(function(data){
-      if(!data || !data.progress) return;
-      resetAllProgress();
-      Object.entries(data.progress.recorded || {}).forEach(([sceneId, entry]) => applyStatus(sceneId, entry));
-      Object.entries(data.progress.missionsDone || {}).forEach(([key, done]) => { if(done) applyMissionKey(key, true); });
+  function eventApiUrl(kind, key){
+    return kind === 'token' ? '/api/share/' + encodeURIComponent(key) : '/api/events/' + encodeURIComponent(key);
+  }
+
+  // Busca o evento mandando o login quando houver (a equipe abre pelo
+  // endereço /e/<id>; visitantes pelo link). Offline, o service worker
+  // devolve a última cópia salva.
+  async function fetchEventData(kind, key){
+    const headers = {};
+    const token = sb ? await withTimeout(accessToken(), 4000).catch(() => null) : null;
+    if(token) headers.Authorization = 'Bearer ' + token;
+    const resp = await fetch(eventApiUrl(kind, key), { headers });
+    const data = await resp.json().catch(() => ({}));
+    return { resp, data };
+  }
+
+  function resyncProgress(opts){
+    const reconnect = !!(opts && opts.reconnect);
+    const kind = currentAccess.via === 'token' ? 'token' : 'id';
+    const key = kind === 'token' ? currentAccess.token : currentEventId;
+    if(!key) return Promise.resolve();
+    return fetchEventData(kind, key).then(function(result){
+      const resp = result.resp, data = result.data;
+      if(!resp.ok){
+        if(resp.status === 403 || resp.status === 404) showAccessDenied(data, kind);
+        return;
+      }
+      setAccess(accessFromData(data, kind, currentAccess.token));
+      applyReadOnlyState();
+      if(data.progress){
+        resetAllProgress();
+        Object.entries(data.progress.recorded || {}).forEach(([sceneId, entry]) => applyStatus(sceneId, entry));
+        Object.entries(data.progress.missionsDone || {}).forEach(([missionKey, done]) => { if(done) applyMissionKey(missionKey, true); });
+      }
       if(document.activeElement !== notesBox && !notesDirty) notesBox.value = data.notes || '';
+      if(reconnect && data.id){
+        showEventLink(data.id);
+        refreshSaveButton();
+      }
     }).catch(function(){});
   }
 
   document.getElementById('copyLinkBtn').addEventListener('click', function(){
-    const input = document.getElementById('eventLinkInput');
-    const btn = this;
+    copyInputValue(document.getElementById('eventLinkInput'), this);
+  });
+
+  function copyInputValue(input, btn){
     const done = () => {
       const original = btn.textContent;
       btn.textContent = 'Copiado!';
@@ -1321,19 +1571,110 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       document.execCommand('copy');
       done();
     }
+  }
+
+  // ---------- acesso negado / link revogado ----------
+
+  function showAccessDenied(data, kind){
+    const code = data && data.code;
+    const title = document.getElementById('accessTitle');
+    const message = document.getElementById('accessMessage');
+    const loginBtn = document.getElementById('accessLoginBtn');
+    disconnectProgressStream();
+    forgetOfflineEvent(window.location.pathname);
+    if(code === 'link_invalid' || (kind === 'token' && !code)){
+      title.textContent = 'Este link não funciona mais';
+      message.textContent = (data && data.error) || 'O link foi desativado ou substituído. Peça o link atualizado a quem organiza o evento.';
+      loginBtn.hidden = true;
+    } else if(code === 'not_found'){
+      title.textContent = 'Evento não encontrado';
+      message.textContent = data.error || 'O link pode estar errado ou o evento foi removido.';
+      loginBtn.hidden = true;
+    } else {
+      title.textContent = 'Este evento é restrito à equipe';
+      message.textContent = currentUser
+        ? 'Sua conta (' + (currentUser.email || '') + ') não faz parte da equipe deste evento. Peça ao dono pra te adicionar, ou peça o link de compartilhamento.'
+        : 'Entre com a conta que foi adicionada à equipe, ou peça o link de compartilhamento a quem organiza o evento.';
+      loginBtn.hidden = !!currentUser;
+    }
+    showView('access');
+  }
+
+  document.getElementById('accessLoginBtn').addEventListener('click', function(){
+    localStorage.setItem(RETURN_TO_KEY, window.location.pathname);
+    loginStatus.textContent = 'Entre com a conta da equipe. Depois do login você volta pra este evento.';
+    loginStatus.hidden = false;
+    showView('login');
   });
 
-  async function loadEventFromUrl(id){
+  document.getElementById('accessHomeBtn').addEventListener('click', function(){
+    backToImport();
+  });
+
+  // ---------- eventos disponíveis offline ----------
+
+  function readOfflineEvents(){
     try {
-      const resp = await fetch('/api/events/' + id);
-      const data = await resp.json();
+      const list = JSON.parse(localStorage.getItem(OFFLINE_EVENTS_KEY) || '[]');
+      return Array.isArray(list) ? list.filter(e => e && typeof e.path === 'string') : [];
+    } catch(err){ return []; }
+  }
+
+  function rememberOfflineEvent(path, title){
+    const list = readOfflineEvents().filter(e => e.path !== path);
+    list.unshift({ path, title: title || 'Evento', at: Date.now() });
+    try { localStorage.setItem(OFFLINE_EVENTS_KEY, JSON.stringify(list.slice(0, 12))); } catch(err){}
+  }
+
+  function forgetOfflineEvent(path){
+    const list = readOfflineEvents().filter(e => e.path !== path);
+    try { localStorage.setItem(OFFLINE_EVENTS_KEY, JSON.stringify(list)); } catch(err){}
+  }
+
+  function apiPathForPage(path){
+    let m;
+    if((m = path.match(/^\/s\/([A-Za-z0-9_-]+)$/))) return eventApiUrl('token', m[1]);
+    if((m = path.match(/^\/e\/([a-zA-Z0-9-]+)$/))) return eventApiUrl('id', m[1]);
+    return null;
+  }
+
+  // Só lista o que o service worker realmente tem salvo neste aparelho.
+  async function availableOfflineEvents(){
+    if(typeof caches === 'undefined') return [];
+    const result = [];
+    for(const entry of readOfflineEvents()){
+      const api = apiPathForPage(entry.path);
+      if(api && await caches.match(api).catch(() => null)) result.push(entry);
+    }
+    return result;
+  }
+
+  // ---------- carregar evento ----------
+
+  async function loadEventFromUrl(id){
+    return loadEventVia('id', id);
+  }
+
+  async function loadEventFromShare(token){
+    return loadEventVia('token', token);
+  }
+
+  async function loadEventVia(kind, key){
+    try {
+      const { resp, data } = await fetchEventData(kind, key);
+      if(resp.status === 403 || resp.status === 404) return showAccessDenied(data, kind);
       if(!resp.ok){
         throw new Error(data.error || 'Evento não encontrado.');
       }
+      setAccess(accessFromData(data, kind, kind === 'token' ? key : null));
       currentOwnerId = data.owner_id || null;
       currentDriveFolderId = data.drive_folder_id || null;
+      currentShare = null;
       loadChecklist(data);
-      showEventLink(id);
+      const eventId = data.id || key;
+      showEventLink(eventId);
+      rememberOfflineEvent(window.location.pathname, data.event_title);
+      if(currentAccess.role === 'owner') refreshCurrentShare(eventId);
     } catch(err){
       importError.textContent = err.message || 'Não consegui carregar esse evento.';
       importError.hidden = false;
@@ -1342,22 +1683,46 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
+  // O dono vê o link de compartilhamento na tela do evento.
+  async function refreshCurrentShare(eventId){
+    try {
+      const token = await accessToken();
+      if(!token) return;
+      const resp = await fetch('/api/events/' + encodeURIComponent(eventId) + '/share', { headers: { Authorization: 'Bearer ' + token } });
+      if(!resp.ok) return;
+      currentShare = await resp.json();
+      if(currentEventId === eventId){
+        const info = eventLinkFor(eventId);
+        document.getElementById('eventLinkInput').value = info.link;
+        document.getElementById('eventLinkLabel').textContent = info.label;
+        eventLinkHint.textContent = info.hint;
+      }
+    } catch(err){}
+  }
+
   async function loadEventForEdit(id){
     generatedInPreview = false;
     roteiroSource = null;
     try {
-      const resp = await fetch('/api/events/' + id);
-      const data = await resp.json();
+      const { resp, data } = await fetchEventData('id', id);
+      if(resp.status === 403 || resp.status === 404) return showAccessDenied(data, 'id');
       if(!resp.ok){
         throw new Error(data.error || 'Evento não encontrado.');
       }
       draft = normalizeDraft(data);
       editingEventId = id;
+      editingRevision = Number.isInteger(data.revision) ? data.revision : null;
+      editingLoadedNotes = data.notes || '';
+      setAccess(accessFromData(data, 'id', null));
       currentOwnerId = data.owner_id || null;
       currentDriveFolderId = data.drive_folder_id || null;
+      editingShare = null;
+      draft.share_mode = (data.access && data.access.share_mode) || null;
+      restoreConflictDraft(id);
       renderPreviewAll();
       showView('preview');
       publishBtn.textContent = 'Salvar alterações';
+      if(currentAccess.role === 'owner') loadEditingShare(id);
     } catch(err){
       importError.textContent = err.message || 'Não consegui carregar esse evento pra editar.';
       importError.hidden = false;
@@ -1743,12 +2108,18 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
 
     const statusBtn = e.target.closest('.status-btn');
-    if(statusBtn){ setSceneStatus(statusBtn.dataset.id, statusBtn.dataset.status); return; }
+    if(statusBtn){
+      if(currentAccess.canWriteProgress) setSceneStatus(statusBtn.dataset.id, statusBtn.dataset.status);
+      return;
+    }
 
     if(e.target.closest('#createDriveFolderBtn') || e.target.closest('#updateDriveFolderBtn')){ createDriveFolderStructure(); return; }
 
     const chip = e.target.closest('.mission-chip');
-    if(chip){ toggleMission(chip.dataset.cat, chip.dataset.itemKey); return; }
+    if(chip){
+      if(currentAccess.canWriteProgress) toggleMission(chip.dataset.cat, chip.dataset.itemKey);
+      return;
+    }
 
     const structBtn = e.target.closest('[data-action]');
     if(structBtn && draft){
@@ -1900,6 +2271,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let confirming = false;
   let confirmTimer = null;
   resetBtn.addEventListener('click', function(){
+    if(!currentAccess.canWriteProgress) return;
     if(!confirming){
       confirming = true;
       resetBtn.classList.add('confirming');
@@ -1919,6 +2291,331 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   });
 
+  // ---------- utilitários ----------
+
+  function withTimeout(promise, ms){
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout')), ms);
+      Promise.resolve(promise).then(
+        value => { clearTimeout(timer); resolve(value); },
+        err => { clearTimeout(timer); reject(err); }
+      );
+    });
+  }
+
+  function pluralize(n, one, many){ return n + ' ' + (n === 1 ? one : many); }
+
+  // ---------- resultado da inclusão de membros ----------
+
+  function hidePublishSummary(){
+    clearTimeout(invitePollTimer);
+    invitePollTimer = null;
+    publishSummary.hidden = true;
+    publishSummaryList.innerHTML = '';
+    retryInvitesBtn.hidden = true;
+  }
+
+  function summaryItems(summary){
+    const items = [];
+    if(!summary) return items;
+    if(summary.added && summary.added.length) items.push({ cls: 'is-ok', text: pluralize(summary.added.length, 'pessoa adicionada', 'pessoas adicionadas') + ' à equipe' });
+    if(summary.invited && summary.invited.length) items.push({ cls: 'is-ok', text: pluralize(summary.invited.length, 'convite enviado', 'convites enviados') + ' por email' });
+    if(summary.existing && summary.existing.length) items.push({ cls: '', text: pluralize(summary.existing.length, 'pessoa já estava', 'pessoas já estavam') + ' na equipe' });
+    if(summary.pending && summary.pending.length) items.push({ cls: 'is-warn', text: pluralize(summary.pending.length, 'convite em processamento', 'convites em processamento') + '…' });
+    (summary.invalid || []).forEach(email => items.push({ cls: 'is-error', text: email + ' não pôde ser convidado: email inválido' }));
+    (summary.failed || []).forEach(f => items.push({ cls: 'is-error', text: f.email + ' não pôde ser convidado: ' + f.error }));
+    (summary.skipped || []).forEach(f => items.push({ cls: 'is-error', text: f.email + ': ' + f.error }));
+    return items;
+  }
+
+  function renderPublishSummary(summary, opts){
+    const canRetry = !(opts && opts.canRetry === false);
+    const items = summaryItems(summary);
+    if(!items.length){ hidePublishSummary(); return; }
+    publishSummaryList.innerHTML = items.map(i => '<li class="'+i.cls+'">'+escapeHTML(i.text)+'</li>').join('');
+    retryInvitesBtn.hidden = !(canRetry && summary.failed && summary.failed.length);
+    publishSummary.hidden = false;
+    // Convites que não couberam no tempo do salvamento continuam no servidor;
+    // acompanha até terminarem.
+    clearTimeout(invitePollTimer);
+    if(canRetry && summary.pending && summary.pending.length && currentEventId){
+      const eventId = currentEventId;
+      invitePollTimer = setTimeout(() => pollInvites(eventId, 1), 4000);
+    }
+  }
+
+  async function fetchInvites(eventId){
+    const token = await accessToken();
+    if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+    const resp = await fetch('/api/events/' + encodeURIComponent(eventId) + '/invites', { headers: { Authorization: 'Bearer ' + token } });
+    const result = await resp.json().catch(() => ({}));
+    if(!resp.ok) throw new Error(result.error || 'Erro ao carregar os convites.');
+    return result;
+  }
+
+  // Mostra só o que ainda interessa do salvamento: pendentes que terminaram.
+  async function pollInvites(eventId, attempt){
+    if(currentEventId !== eventId || publishSummary.hidden) return;
+    try {
+      const { invites } = await fetchInvites(eventId);
+      const pending = invites.filter(i => i.status === 'pending' || i.status === 'processing');
+      const failed = invites.filter(i => i.status === 'failed').map(i => ({ email: i.email, error: i.last_error || 'Não foi possível convidar.' }));
+      const added = invites.filter(i => i.status === 'added').map(i => i.email);
+      const invited = invites.filter(i => i.status === 'invited').map(i => i.email);
+      renderPublishSummary({ added, invited, existing: [], pending: pending.map(i => i.email), invalid: [], failed, skipped: [] }, { canRetry: true });
+      if(pending.length && attempt < 15){
+        clearTimeout(invitePollTimer);
+        invitePollTimer = setTimeout(() => pollInvites(eventId, attempt + 1), 4000);
+      }
+    } catch(err){ /* mantém o último resumo */ }
+  }
+
+  async function retryFailedInvites(eventId){
+    const token = await accessToken();
+    if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+    const resp = await fetch('/api/events/' + encodeURIComponent(eventId) + '/invites/retry', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+    const result = await resp.json().catch(() => ({}));
+    if(!resp.ok) throw new Error(result.error || 'Erro ao reenviar os convites.');
+    return result;
+  }
+
+  document.getElementById('publishSummaryClose').addEventListener('click', hidePublishSummary);
+
+  retryInvitesBtn.addEventListener('click', async function(){
+    if(!currentEventId) return;
+    retryInvitesBtn.disabled = true;
+    try {
+      const { summary } = await retryFailedInvites(currentEventId);
+      // no resumo pós-reenvio, "já adicionados" de antes não interessam
+      renderPublishSummary(Object.assign({}, summary, { existing: [] }), { canRetry: true });
+    } catch(err){
+      alert('Não consegui reenviar (' + (err.message || 'erro desconhecido') + ').');
+    } finally {
+      retryInvitesBtn.disabled = false;
+    }
+  });
+
+  // ---------- convites na tela "Gerenciar equipe" ----------
+
+  const INVITE_LABELS = {
+    pending: ['Enviando…', 'pending'], processing: ['Enviando…', 'pending'],
+    added: ['Adicionado', 'ok'], existing: ['Já na equipe', 'ok'],
+    invited: ['Convite enviado', 'ok'], failed: ['Falhou', 'failed']
+  };
+
+  function inviteRowHTML(invite){
+    const label = INVITE_LABELS[invite.status] || [invite.status, 'pending'];
+    const detail = invite.status === 'failed' ? (invite.last_error || 'Não foi possível convidar.') : (invite.status === 'pending' && invite.last_error ? invite.last_error : '');
+    return (
+      '<div class="history-card">'+
+        '<div>'+
+          '<div class="history-title">'+escapeHTML(invite.email)+'</div>'+
+          (detail ? '<div class="history-meta">'+escapeHTML(detail)+'</div>' : '')+
+        '</div>'+
+        '<span class="invite-status invite-status--'+label[1]+'">'+escapeHTML(label[0])+'</span>'+
+      '</div>'
+    );
+  }
+
+  async function renderMembersInvites(){
+    if(!currentEventId) return;
+    invitesStatus.textContent = '';
+    try {
+      const { invites } = await fetchInvites(currentEventId);
+      invitesList.innerHTML = invites.length
+        ? invites.map(inviteRowHTML).join('')
+        : '<div class="history-empty">Nenhum convite por email ainda.</div>';
+      membersRetryInvitesBtn.hidden = !invites.some(i => i.status === 'failed');
+    } catch(err){
+      invitesList.innerHTML = '<div class="history-empty">Não consegui carregar os convites (' + escapeHTML(err.message || 'erro') + ').</div>';
+      membersRetryInvitesBtn.hidden = true;
+    }
+  }
+
+  membersRetryInvitesBtn.addEventListener('click', async function(){
+    membersRetryInvitesBtn.disabled = true;
+    invitesStatus.textContent = 'Reenviando…';
+    try {
+      await retryFailedInvites(currentEventId);
+      invitesStatus.textContent = 'Convites reenviados.';
+      showMembersView();
+    } catch(err){
+      invitesStatus.textContent = 'Não consegui reenviar (' + (err.message || 'erro desconhecido') + ').';
+    } finally {
+      membersRetryInvitesBtn.disabled = false;
+    }
+  });
+
+  // ---------- compartilhamento (tela de criar/editar) ----------
+
+  const SHARE_HINTS = {
+    team: 'Só você e os membros da equipe, com conta, abrem o evento. Quem tiver só o link não vê nada.',
+    view: 'Quem tiver o link vê a checklist em tempo real, mas não marca progresso. A equipe marca normalmente.',
+    collab: 'Quem tiver o link vê e marca progresso, sem precisar de conta. Bom pra equipe de campo que não faz login.'
+  };
+
+  function canManageShare(){
+    // evento novo: quem publica vira o dono; evento existente: só o dono
+    return !editingEventId || currentAccess.role === 'owner';
+  }
+
+  function renderShareSettings(){
+    if(!draft || !canManageShare()){
+      shareSettings.hidden = true;
+      return;
+    }
+    shareSettings.hidden = false;
+    const mode = draft.share_mode || (editingEventId ? null : 'collab');
+    document.querySelectorAll('input[name="shareMode"]').forEach(radio => { radio.checked = radio.value === mode; });
+    const hint = [SHARE_HINTS[mode] || ''];
+    const legacy = document.getElementById('shareLegacyHint');
+    legacy.hidden = true;
+    const linkBox = document.getElementById('shareLinkBox');
+    const noLinkBox = document.getElementById('shareNoLinkBox');
+    if(!editingEventId){
+      linkBox.hidden = true;
+      noLinkBox.hidden = true;
+      if(mode !== 'team') hint.push('O link é criado ao publicar.');
+    } else if(editingShare){
+      const hasLink = !!editingShare.share_path;
+      linkBox.hidden = !hasLink;
+      noLinkBox.hidden = hasLink;
+      if(hasLink) document.getElementById('shareLinkInput').value = window.location.origin + editingShare.share_path;
+      if(editingShare.legacy_active){
+        legacy.hidden = false;
+        legacy.textContent = 'O endereço antigo (' + window.location.origin + '/e/' + editingEventId + ') ainda abre sem conta até ' + formatDateBR(editingShare.legacy_link_until) + '. Mudar o modo, gerar um link novo ou desativar o link encerra o endereço antigo na hora — envie o link novo pra equipe.';
+      }
+      if(mode !== editingShare.share_mode) hint.push('A mudança vale ao salvar. Quem estiver com o evento aberto pelo link é reconectado.');
+    } else {
+      linkBox.hidden = true;
+      noLinkBox.hidden = true;
+    }
+    document.getElementById('shareModeHint').textContent = hint.filter(Boolean).join(' ');
+  }
+
+  async function loadEditingShare(eventId){
+    try {
+      const token = await accessToken();
+      if(!token) return;
+      const resp = await fetch('/api/events/' + encodeURIComponent(eventId) + '/share', { headers: { Authorization: 'Bearer ' + token } });
+      if(!resp.ok) return;
+      const share = await resp.json();
+      if(editingEventId !== eventId) return;
+      editingShare = share;
+      if(!draft.share_mode) draft.share_mode = share.share_mode;
+      renderShareSettings();
+    } catch(err){}
+  }
+
+  document.querySelectorAll('input[name="shareMode"]').forEach(radio => {
+    radio.addEventListener('change', function(e){
+      if(draft && e.target.checked) draft.share_mode = e.target.value;
+      renderShareSettings();
+    });
+  });
+
+  document.getElementById('shareCopyBtn').addEventListener('click', function(){
+    copyInputValue(document.getElementById('shareLinkInput'), this);
+  });
+
+  // Gerar/desativar link valem na hora (não esperam "Salvar"), como um botão
+  // de revogar deve funcionar.
+  async function shareRequest(method, suffix, confirmText){
+    if(!editingEventId) return;
+    if(confirmText && !confirm(confirmText)) return;
+    const status = document.getElementById('shareStatus');
+    status.textContent = 'Atualizando…';
+    try {
+      const token = await accessToken();
+      if(!token) throw new Error('Sessão expirada. Faça login de novo.');
+      const resp = await fetch('/api/events/' + encodeURIComponent(editingEventId) + '/share' + suffix, { method, headers: { Authorization: 'Bearer ' + token } });
+      const result = await resp.json().catch(() => ({}));
+      if(!resp.ok) throw new Error(result.error || 'Erro ao atualizar o compartilhamento.');
+      editingShare = result;
+      status.textContent = method === 'DELETE' ? 'Link desativado. O link anterior parou de funcionar.' : 'Link novo criado. O link anterior parou de funcionar.';
+      renderShareSettings();
+    } catch(err){
+      status.textContent = 'Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').';
+    }
+  }
+
+  document.getElementById('shareRegenerateBtn').addEventListener('click', function(){
+    shareRequest('POST', '/regenerate', 'Gerar um link novo? O link atual (e o endereço antigo, se ainda valer) param de funcionar na hora — quem estiver com ele aberto perde o acesso.');
+  });
+  document.getElementById('shareDisableBtn').addEventListener('click', function(){
+    shareRequest('DELETE', '', 'Desativar o link? Ele para de funcionar na hora e só a equipe, com conta, abre o evento.');
+  });
+  document.getElementById('shareCreateBtn').addEventListener('click', function(){
+    shareRequest('POST', '/regenerate', null);
+  });
+
+  // ---------- conflito de edição ----------
+
+  function showConflict(eventId, current){
+    const serverDraft = normalizeDraft(current || {});
+    conflictState = { eventId, serverDraft, serverRevision: Number.isInteger(current && current.revision) ? current.revision : null };
+    try { localStorage.setItem(CONFLICT_DRAFT_PREFIX + eventId, JSON.stringify(draft)); } catch(err){}
+    conflictDiff.hidden = true;
+    conflictDiff.innerHTML = '';
+    conflictStatus.textContent = '';
+    conflictPanel.hidden = false;
+    window.scrollTo(0, 0);
+    if(conflictPanel.focus) conflictPanel.focus();
+  }
+
+  function clearConflict(eventId){
+    conflictState = null;
+    conflictPanel.hidden = true;
+    conflictDiff.hidden = true;
+    if(eventId){ try { localStorage.removeItem(CONFLICT_DRAFT_PREFIX + eventId); } catch(err){} }
+  }
+
+  // Um rascunho que ficou em conflito sobrevive a recarregar a página.
+  function restoreConflictDraft(eventId){
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(CONFLICT_DRAFT_PREFIX + eventId) || 'null'); } catch(err){}
+    if(!saved || typeof saved !== 'object'){ clearConflict(null); return; }
+    const serverDraft = draft;
+    draft = normalizeDraft(saved);
+    draft.share_mode = serverDraft.share_mode;
+    conflictState = { eventId, serverDraft, serverRevision: editingRevision };
+    conflictPanel.hidden = false;
+    conflictStatus.textContent = 'Recuperamos o rascunho que não pôde ser salvo. Compare com a versão atual antes de decidir.';
+  }
+
+  document.getElementById('conflictCompareBtn').addEventListener('click', function(){
+    if(!conflictState) return;
+    const changes = diffEventDrafts(draft, conflictState.serverDraft);
+    conflictDiff.innerHTML = changes.length
+      ? '<table><thead><tr><th scope="col">Campo</th><th scope="col">Sua versão</th><th scope="col">Versão atual</th></tr></thead><tbody>'+
+        changes.map(c => '<tr><th scope="row">'+escapeHTML(c.label)+'</th><td>'+escapeHTML(c.local)+'</td><td>'+escapeHTML(c.remote)+'</td></tr>').join('')+
+        '</tbody></table>'
+      : '<p>Os campos do roteiro são iguais nas duas versões — a outra pessoa pode ter mudado só a versão salva. Recarregue e salve de novo.</p>';
+    conflictDiff.hidden = false;
+  });
+
+  document.getElementById('conflictCopyBtn').addEventListener('click', function(){
+    const text = draftToText(draft);
+    const done = () => { conflictStatus.textContent = 'Rascunho copiado. Cole num lugar seguro antes de recarregar.'; };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(() => { conflictStatus.textContent = 'Não consegui copiar automaticamente.'; });
+    } else {
+      conflictStatus.textContent = 'Seu navegador não permite copiar automaticamente.';
+    }
+  });
+
+  document.getElementById('conflictReloadBtn').addEventListener('click', function(){
+    if(!conflictState) return;
+    if(!confirm('Carregar a versão mais recente? As alterações desta tela que não foram salvas serão descartadas (copie o rascunho antes, se precisar).')) return;
+    const shareMode = draft.share_mode;
+    draft = conflictState.serverDraft;
+    draft.share_mode = shareMode;
+    editingRevision = conflictState.serverRevision;
+    editingLoadedNotes = draft.notes || '';
+    clearConflict(conflictState.eventId);
+    renderPreviewAll();
+  });
+
   // ---------- autenticação ----------
 
   function updateAuthUI(){
@@ -1933,9 +2630,35 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   async function accessToken(){
+    // aberto offline sem cliente de login (tela de recuperação): segue sem conta
+    if(!sb) return cachedAccessToken;
     const { data } = await sb.auth.getSession();
     cachedAccessToken = data.session ? data.session.access_token : null;
     return cachedAccessToken;
+  }
+
+  // Depois de entrar pela tela de "evento restrito", volta pro evento.
+  function restoreReturnToIfAny(){
+    const target = localStorage.getItem(RETURN_TO_KEY);
+    if(!currentUser || !target) return false;
+    localStorage.removeItem(RETURN_TO_KEY);
+    if(!/^\/(e|s)\/[A-Za-z0-9_-]+(\/editar)?$/.test(target)) return false;
+    history.replaceState({}, '', target);
+    route();
+    return true;
+  }
+
+  // Versão, notas e compartilhamento da edição sobrevivem ao desvio pelo login;
+  // sem a versão o servidor recusaria o save (base_revision é obrigatório).
+  function editingSnapshot(){
+    if(!editingEventId) return null;
+    return { revision: editingRevision, notes: editingLoadedNotes, share: editingShare };
+  }
+
+  function restoreEditingSnapshot(snap){
+    editingRevision = snap && Number.isInteger(snap.revision) ? snap.revision : null;
+    editingLoadedNotes = snap && typeof snap.notes === 'string' ? snap.notes : null;
+    editingShare = snap && snap.share ? snap.share : null;
   }
 
   function restorePendingRoteiroIfAny(){
@@ -1949,6 +2672,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     roteiroSource = wrapped ? saved.draft || null : null;
     draft = roteiroSource;
     editingEventId = wrapped ? saved.editingEventId || null : null;
+    restoreEditingSnapshot(wrapped ? saved.editing : null);
     const text = wrapped ? saved.text : pending;
     if(draft) {
       updatePreviewContext();
@@ -1975,6 +2699,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const hasWrapper = parsed && typeof parsed === 'object' && 'draft' in parsed;
     draft = hasWrapper ? parsed.draft : parsed;
     editingEventId = hasWrapper ? (parsed.editingEventId || null) : null;
+    restoreEditingSnapshot(hasWrapper ? parsed.editing : null);
     generatedInPreview = !!parsed.generatedInPreview;
     updatePreviewContext();
     renderPreviewAll();
@@ -1986,7 +2711,15 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   loginBackBtn.addEventListener('click', function(){ showView('import'); });
 
+  function loginUnavailable(){
+    if(sb) return false;
+    loginStatus.textContent = 'Sem conexão: entrar na conta precisa de internet. Conecte-se e recarregue a página.';
+    loginStatus.hidden = false;
+    return true;
+  }
+
   googleLoginBtn.addEventListener('click', async function(){
+    if(loginUnavailable()) return;
     loginStatus.hidden = true;
     googleLoginBtn.disabled = true;
     try {
@@ -2005,6 +2738,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   });
 
   loginSubmitBtn.addEventListener('click', async function(){
+    if(loginUnavailable()) return;
     const email = loginEmailInput.value.trim();
     loginStatus.hidden = true;
     if(!email){
@@ -2025,10 +2759,24 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   });
 
   authStripLogoutBtn.addEventListener('click', async function(){
-    await sb.auth.signOut();
+    if(sb) await withTimeout(sb.auth.signOut(), 5000).catch(() => {});
+    await clearOfflineEventData();
     history.pushState({}, '', '/');
     showView('import');
   });
+
+  // Ao sair da conta, as cópias offline dos eventos (que podem ter emails da
+  // equipe) saem do aparelho. A configuração do app fica.
+  async function clearOfflineEventData(){
+    try { localStorage.removeItem(OFFLINE_EVENTS_KEY); } catch(err){}
+    if(typeof caches === 'undefined') return;
+    try {
+      const cache = await caches.open('captura-data-v1');
+      for(const request of await cache.keys()){
+        if(new URL(request.url).pathname !== '/api/config') await cache.delete(request);
+      }
+    } catch(err){}
+  }
 
   historyNewBtn.addEventListener('click', function(){
     backToImport();
@@ -2044,6 +2792,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if((m = path.match(/^\/e\/([a-zA-Z0-9-]+)\/editar$/))){ loadEventForEdit(m[1]); return; }
     if(path === '/historico'){ showHistoryView(); return; }
     if((m = path.match(/^\/e\/([a-zA-Z0-9-]+)$/))){ loadEventFromUrl(m[1]); return; }
+    if((m = path.match(/^\/s\/([A-Za-z0-9_-]+)$/))){ loadEventFromShare(m[1]); return; }
     roteiroSource = null;
     draft = null;
     editingEventId = null;
@@ -2052,19 +2801,132 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   window.addEventListener('popstate', route);
 
+  // ---------- inicialização ----------
+  // Antes: se /api/config falhasse (offline, servidor fora), a promessa
+  // rejeitava sem tratamento e a tela ficava em "Carregando…" pra sempre.
+
+  function initError(kind, status){
+    const err = new Error(kind);
+    err.kind = kind;
+    err.status = status;
+    return err;
+  }
+
+  function isValidConfig(cfg){
+    return !!cfg && typeof cfg.supabaseUrl === 'string' && /^https?:\/\//.test(cfg.supabaseUrl)
+      && typeof cfg.supabaseAnonKey === 'string' && cfg.supabaseAnonKey.length > 0;
+  }
+
+  async function loadConfig(){
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    let resp;
+    try {
+      resp = await fetch('/api/config', { signal: controller.signal });
+    } catch(err){
+      throw initError(navigator.onLine === false ? 'offline' : 'network');
+    } finally {
+      clearTimeout(timer);
+    }
+    const offlineHeader = resp.headers && resp.headers.get && resp.headers.get('X-Captura-Offline');
+    if(offlineHeader) throw initError('offline');
+    if(!resp.ok) throw initError('server', resp.status);
+    let cfg;
+    try { cfg = await resp.json(); } catch(err){ throw initError('config'); }
+    // Configuração incompleta é problema do servidor, não da conexão.
+    if(!isValidConfig(cfg)) throw initError('config');
+    return cfg;
+  }
+
+  const INIT_MESSAGES = {
+    offline: 'Sem conexão com a internet. Na primeira vez, o CAPTURA precisa de internet pra carregar. Conecte-se e toque em "Tentar novamente".',
+    offlineWithEvents: 'Sem conexão com a internet. Você pode abrir os eventos que já abriu neste aparelho, ou tentar de novo quando a conexão voltar.',
+    network: 'Não foi possível falar com o servidor. Verifique a conexão e toque em "Tentar novamente".',
+    server: 'O servidor do CAPTURA não respondeu corretamente. Tente novamente em alguns instantes.',
+    config: 'O servidor respondeu com uma configuração incompleta. Isso não é problema da sua conexão — avise quem administra o CAPTURA.',
+    library: 'Não foi possível carregar os arquivos do app. Verifique a conexão e toque em "Tentar novamente".',
+    timeout: 'O CAPTURA demorou demais pra abrir. Verifique a conexão e toque em "Tentar novamente".'
+  };
+
+  async function showInitError(err){
+    const kind = (err && err.kind) || 'network';
+    const offlineLike = kind === 'offline' || kind === 'network' || kind === 'timeout' || kind === 'library';
+    const events = offlineLike ? await availableOfflineEvents() : [];
+    let message = INIT_MESSAGES[kind] || INIT_MESSAGES.network;
+    if(kind === 'offline' && events.length) message = INIT_MESSAGES.offlineWithEvents;
+    if(kind === 'server' && err.status) message += ' (erro ' + err.status + ')';
+    document.getElementById('initErrorTitle').textContent = kind === 'config' ? 'O CAPTURA está com um problema de configuração' : 'Não foi possível abrir o CAPTURA';
+    document.getElementById('initErrorMessage').textContent = message;
+    const offlineBtn = document.getElementById('initOfflineBtn');
+    const list = document.getElementById('initOfflineList');
+    offlineBtn.hidden = !events.length;
+    list.hidden = true;
+    list.innerHTML = events.map(e =>
+      '<li><button class="btn" type="button" data-offline-path="'+escapeAttr(e.path)+'">'+escapeHTML(e.title || 'Evento')+'</button></li>'
+    ).join('');
+    showView('initError');
+  }
+
+  document.getElementById('initRetryBtn').addEventListener('click', function(){ initAuth(); });
+
+  document.getElementById('initOfflineBtn').addEventListener('click', function(){
+    document.getElementById('initOfflineList').hidden = false;
+  });
+
+  // Abre um evento salvo sem o cliente de login: o service worker entrega a
+  // última cópia e o progresso marcado entra na fila local.
+  document.getElementById('initOfflineList').addEventListener('click', function(e){
+    const button = e.target.closest('[data-offline-path]');
+    if(!button) return;
+    history.pushState({}, '', button.dataset.offlinePath);
+    route();
+  });
+
+  let authListenerAttached = false;
+  let initInProgress = false;
+
   async function initAuth(){
-    const cfg = await fetch('/api/config').then(r => r.json());
-    sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
-    const { data: { session } } = await sb.auth.getSession();
+    if(initInProgress) return;
+    initInProgress = true;
+    showView('loading');
+    // rede de segurança: nada deve deixar a tela presa em "Carregando…"
+    const watchdog = setTimeout(() => {
+      if(!loadingView.hidden) showInitError(initError('timeout'));
+    }, 20000);
+    try {
+      if(!sb){
+        const cfg = await loadConfig();
+        if(typeof supabase === 'undefined' || !supabase || !supabase.createClient) throw initError('library');
+        sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+      }
+    } catch(err){
+      clearTimeout(watchdog);
+      initInProgress = false;
+      await showInitError(err);
+      return;
+    }
+    // A sessão fica salva no navegador; offline, renovar o token pode travar.
+    let session = null;
+    try {
+      const result = await withTimeout(sb.auth.getSession(), 5000);
+      session = result && result.data ? result.data.session : null;
+    } catch(err){ session = null; }
     currentUser = session?.user || null;
     cachedAccessToken = session?.access_token || null;
     updateAuthUI();
-    sb.auth.onAuthStateChange(function(_evt, session){
-      currentUser = session?.user || null;
-      cachedAccessToken = session?.access_token || null;
-      updateAuthUI();
-      if(!restorePendingRoteiroIfAny()) restorePendingDraftIfAny();
-    });
+    if(!authListenerAttached){
+      authListenerAttached = true;
+      sb.auth.onAuthStateChange(function(_evt, session){
+        currentUser = session?.user || null;
+        cachedAccessToken = session?.access_token || null;
+        updateAuthUI();
+        if(restoreReturnToIfAny()) return;
+        if(!restorePendingRoteiroIfAny()) restorePendingDraftIfAny();
+      });
+    }
+    clearTimeout(watchdog);
+    initInProgress = false;
+    if(restoreReturnToIfAny()) return;
     route();
   }
 

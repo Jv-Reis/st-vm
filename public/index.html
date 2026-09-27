@@ -53,6 +53,37 @@
   </div>
 </div>
 
+<!-- ---------- INIT ERROR VIEW ---------- -->
+<div id="initErrorView" hidden>
+  <div class="import-view">
+    <div class="import-card" role="alert" aria-labelledby="initErrorTitle">
+      <span class="import-eyebrow">Captura</span>
+      <h1 class="import-title" id="initErrorTitle">Não foi possível abrir o CAPTURA</h1>
+      <p class="import-sub" id="initErrorMessage"></p>
+      <div class="import-actions">
+        <button class="btn btn-primary" id="initRetryBtn" type="button">Tentar novamente</button>
+        <button class="btn" id="initOfflineBtn" type="button" hidden>Abrir eventos disponíveis offline</button>
+      </div>
+      <ul class="offline-events" id="initOfflineList" hidden></ul>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- ACCESS VIEW (evento restrito / link revogado) ---------- -->
+<div id="accessView" hidden>
+  <div class="import-view">
+    <div class="import-card" role="alert" aria-labelledby="accessTitle">
+      <span class="import-eyebrow">Captura · acesso ao evento</span>
+      <h1 class="import-title" id="accessTitle">Este evento é restrito à equipe</h1>
+      <p class="import-sub" id="accessMessage"></p>
+      <div class="import-actions">
+        <button class="btn btn-primary" id="accessLoginBtn" type="button" hidden>Entrar com minha conta</button>
+        <button class="btn" id="accessHomeBtn" type="button">Ir para o início</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ---------- IMPORT VIEW ---------- -->
 <div class="import-view" id="importView" hidden>
   <div class="import-wrap">
@@ -109,6 +140,17 @@
     </div>
   </div>
   <div class="preview-view">
+    <section class="conflict-panel" id="conflictPanel" role="alert" aria-labelledby="conflictTitle" hidden>
+      <h3 id="conflictTitle">Este evento foi alterado por outra pessoa.</h3>
+      <p>Suas alterações não foram salvas, pra não apagar o que a outra pessoa fez. Seu rascunho continua aqui nesta tela.</p>
+      <div class="conflict-actions">
+        <button class="btn" id="conflictCompareBtn" type="button">Comparar o que mudou</button>
+        <button class="btn" id="conflictCopyBtn" type="button">Copiar meu rascunho</button>
+        <button class="btn btn-primary" id="conflictReloadBtn" type="button">Recarregar a versão mais recente</button>
+      </div>
+      <p class="field-hint" id="conflictStatus" role="status" aria-live="polite"></p>
+      <div class="conflict-diff" id="conflictDiff" hidden></div>
+    </section>
     <div class="field-row">
       <label class="field-label" for="previewEventTitle">Nome do evento</label>
       <input class="field-input" id="previewEventTitle" type="text" maxlength="70">
@@ -148,6 +190,39 @@
         <span>Novos membros já entram podendo editar</span>
       </label>
     </div>
+    <fieldset class="share-settings" id="shareSettings" hidden>
+      <legend class="field-label">Quem pode abrir este evento</legend>
+      <label class="share-mode">
+        <input type="radio" name="shareMode" value="team">
+        <span><strong>Somente equipe</strong>Só você e os membros, com conta. O link não abre nada pra quem não está na equipe.</span>
+      </label>
+      <label class="share-mode">
+        <input type="radio" name="shareMode" value="view">
+        <span><strong>Link para visualizar</strong>Quem tiver o link vê a checklist, mas não marca progresso. Só a equipe marca.</span>
+      </label>
+      <label class="share-mode">
+        <input type="radio" name="shareMode" value="collab">
+        <span><strong>Link para colaborar</strong>Quem tiver o link vê e marca progresso, sem precisar de conta.</span>
+      </label>
+      <p class="field-hint" id="shareModeHint" role="status" aria-live="polite"></p>
+      <div class="share-link" id="shareLinkBox" hidden>
+        <label class="field-label" for="shareLinkInput">Link de compartilhamento</label>
+        <div class="event-link-box">
+          <input class="event-link-input" id="shareLinkInput" type="text" readonly>
+          <button class="btn" id="shareCopyBtn" type="button">Copiar</button>
+        </div>
+        <div class="share-link-actions">
+          <button class="btn" id="shareRegenerateBtn" type="button">Gerar novo link</button>
+          <button class="btn btn-danger" id="shareDisableBtn" type="button">Desativar link</button>
+        </div>
+      </div>
+      <div class="share-link" id="shareNoLinkBox" hidden>
+        <p class="field-hint">O link de compartilhamento está desativado. Só a equipe abre o evento.</p>
+        <button class="btn" id="shareCreateBtn" type="button">Criar link</button>
+      </div>
+      <p class="field-hint" id="shareLegacyHint" hidden></p>
+      <p class="field-hint" id="shareStatus" role="status" aria-live="polite"></p>
+    </fieldset>
     <div class="field-row">
       <label class="field-label" for="previewDriveFolders">Estrutura de pastas pro Google Drive (uma por linha, opcional)</label>
       <textarea class="field-textarea" id="previewDriveFolders" aria-describedby="driveFoldersHint" placeholder="Ex: Chegada&#10;Cerimônia&#10;Final/Fotos finais&#10;Final/Vídeos finais"></textarea>
@@ -262,7 +337,7 @@
     </div>
   </div>
   <div class="preview-view">
-    <p class="import-sub" style="margin-top:0;">Só quem salvou este evento aparece aqui. "Editor" pode alterar fases, cenas e missões — marcar progresso continua liberado pra qualquer um com o link, sem precisar disso.</p>
+    <p class="import-sub" style="margin-top:0;">Aqui aparecem os membros da equipe. "Editor" pode alterar fases, cenas e missões. Todo membro marca progresso; quem só tem o link segue o modo de compartilhamento do evento.</p>
     <div class="field-row" style="display:flex; gap:8px; align-items:flex-end;">
       <div style="flex:1;">
         <label class="field-label" for="addMemberEmailInput">Adicionar membro por email</label>
@@ -270,8 +345,14 @@
       </div>
       <button class="btn btn-primary" id="addMemberBtn" type="button">Adicionar</button>
     </div>
-    <div class="field-hint" id="addMemberStatus" style="margin-bottom:14px;"></div>
+    <div class="field-hint" id="addMemberStatus" role="status" aria-live="polite" style="margin-bottom:14px;"></div>
     <div id="membersList"></div>
+    <section class="invites-section" aria-labelledby="invitesTitle">
+      <h3 id="invitesTitle" class="preview-section-title">Convites por email</h3>
+      <div id="invitesList"></div>
+      <button class="btn" id="membersRetryInvitesBtn" type="button" hidden>Reenviar convites que falharam</button>
+      <p class="field-hint" id="invitesStatus" role="status" aria-live="polite"></p>
+    </section>
   </div>
 </div>
 
@@ -315,14 +396,24 @@
       </div>
 
       <div class="event-link-row" id="eventLinkRow" hidden>
-        <span class="event-label">Link do evento (compartilhe com a equipe)</span>
+        <span class="event-label" id="eventLinkLabel">Link do evento (compartilhe com a equipe)</span>
         <div class="event-link-box">
           <input class="event-link-input" id="eventLinkInput" type="text" readonly aria-label="Link do evento">
           <button class="btn" id="copyLinkBtn" type="button">Copiar</button>
           <a class="btn" id="calendarLinkBtn" href="#" target="_blank" rel="noopener" hidden>📅 Google Calendar</a>
           <a class="btn" id="driveFolderLinkBtn" href="#" target="_blank" rel="noopener" hidden>📁 Pasta no Drive</a>
         </div>
+        <span class="event-link-hint" id="eventLinkHint"></span>
       </div>
+
+      <section class="publish-summary" id="publishSummary" role="status" aria-live="polite" hidden>
+        <div class="publish-summary-head">
+          <strong>Equipe deste evento</strong>
+          <button class="icon-btn" id="publishSummaryClose" type="button" aria-label="Fechar resumo">✕</button>
+        </div>
+        <ul id="publishSummaryList"></ul>
+        <button class="btn" id="retryInvitesBtn" type="button" hidden>Reenviar convites que falharam</button>
+      </section>
 
       <div class="progress-wrap" role="region" aria-live="polite">
         <div class="progress-meta">
@@ -370,7 +461,7 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/vendor/supabase.js"></script>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

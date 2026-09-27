@@ -91,9 +91,38 @@ test('Falha mantém fila e IDs; desconexão não tenta escrever', async () => {
   assert.equal(f.calls.length, 0);
 });
 
-test('Revisão alterada durante a sincronização impede escrita obsoleta', async () => {
+test('Revisão alterada durante a sincronização impede escrita obsoleta, sem registrar erro, e a próxima rodada sincroniza', async () => {
   const f = fixture();
-  await createCalendarWorker({ ...f.options, getToken: async id => { f.tables.calendar_sync_queue[0].revision = 'new'; return id; } })();
+  let bumped = false;
+  const options = { ...f.options, getToken: async id => {
+    if (!bumped) { bumped = true; f.tables.calendar_sync_queue[0].revision = 'new'; }
+    return id;
+  } };
+  const run = createCalendarWorker(options);
+  await run();
   assert.equal(f.calls.length, 0);
   assert.equal(f.tables.calendar_sync_queue[0].revision, 'new');
+  assert.equal(f.errors.length, 0); // interrupção esperada não vai pro Sentry
+  assert.equal(f.tables.calendar_sync_queue[0].last_error, undefined);
+
+  await run();
+  assert.equal(f.calls.length, 2); // dono e Y sincronizados com a revisão nova
+  assert.equal(f.tables.calendar_sync_queue.length, 0);
+  assert.equal(f.errors.length, 0);
+});
+
+test('Outro servidor assumir a trava no meio interrompe o lote sem registrar erro', async () => {
+  const f = fixture();
+  f.tables.calendar_sync_queue.push({ event_id: 'e2', revision: 'r1', retry_at: '2000-01-01' });
+  let lockCalls = 0;
+  const db = { ...f.options.db, rpc: async (_name, args) => {
+    if (args.p_release) return { data: false };
+    lockCalls++;
+    return { data: lockCalls === 1 }; // só a trava inicial do lote é concedida
+  } };
+  await createCalendarWorker({ ...f.options, db })();
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.errors.length, 0);
+  assert.equal(f.tables.calendar_sync_queue.length, 2); // nada perdido: fica pro servidor que assumiu
+  assert.ok(f.tables.calendar_sync_queue.every(j => !j.last_error));
 });
