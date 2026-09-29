@@ -13,6 +13,7 @@ import * as Sentry from '@sentry/node';
 import { foldProgress, validEventPayload, splitDriveFolderPath, makeRateLimiter, filterValidEmails } from './lib/pure.js';
 import { decideAccess, isValidShareToken, isValidEventId, normalizeShareMode, stripPrivateFields } from './lib/access.js';
 import { createInviteProcessor, normalizeEmailList, summarizeInvites } from './lib/member-invites.js';
+import { createWorkerLogger } from './lib/transient.js';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -36,6 +37,10 @@ function logError(message, err) {
     Sentry.captureException(wrapped, { extra: { message, original: err } });
   }
 }
+
+// Workers em segundo plano (Calendar, convites): queda passageira do Supabase
+// vira só aviso no log; só vai pro Sentry se durar vários minutos seguidos.
+const logWorkerError = createWorkerLogger({ logError });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -437,7 +442,7 @@ async function getValidGoogleAccessToken(userId) {
 const runCalendarSync = createCalendarWorker({
   db: supabaseAdmin, getToken: getValidGoogleAccessToken,
   baseUrl: appBaseUrl,
-  logError
+  logError: logWorkerError
 });
 if (supabaseAdmin) {
   setInterval(runCalendarSync, 15000).unref();
@@ -587,7 +592,7 @@ app.post('/api/google/drive-folders', requireAuth, async (req, res) => {
 const inviteProcessor = createInviteProcessor({
   admin: supabaseAdmin,
   inviteUser: (email, redirectTo) => supabaseAdmin.auth.admin.inviteUserByEmail(email, { redirectTo }),
-  logError
+  logError: logWorkerError
 });
 const INVITE_REQUEST_BUDGET_MS = 4000;
 
@@ -603,7 +608,7 @@ async function runInvites(options) {
       inviteMigrationWarned = true;
       return [];
     }
-    logError('Fila de convites indisponível:', err);
+    logWorkerError('Fila de convites indisponível:', err);
     return [];
   }
 }
