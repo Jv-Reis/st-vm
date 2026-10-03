@@ -18,6 +18,7 @@ import { computeMinimalProgressRows, foldProgress } from '../lib/pure.js';
 
 const { Pool } = pg;
 const apply = process.argv.includes('--apply');
+const RECENT_RESET_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
@@ -38,9 +39,16 @@ async function main() {
 
     for (const { event_id: eventId } of eventIds) {
       const { rows } = await client.query(
-        'select action, payload from event_progress where event_id = $1 order by created_at asc',
+        'select action, payload, created_at from event_progress where event_id = $1 order by created_at asc',
         [eventId]
       );
+      // um reinício recente só é recuperável enquanto as linhas de antes dele
+      // existirem (README, "Recuperar um reinício"): compactar apagaria isso
+      const lastReset = rows.filter((row) => row.action === 'reset').pop();
+      if (lastReset && Date.now() - new Date(lastReset.created_at).getTime() < RECENT_RESET_MS) {
+        console.log(`  (pulado) ${eventId}: reinício há menos de 7 dias, histórico mantido pra poder recuperar`);
+        continue;
+      }
       const minimalRows = computeMinimalProgressRows(rows);
 
       if (minimalRows.length >= rows.length) continue; // nada a ganhar compactando esse

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decideAccess, isValidShareToken, isValidEventId, normalizeShareMode, stripPrivateFields } from '../lib/access.js';
+import { decideAccess, isValidShareToken, isValidEventId, normalizeShareMode, stripPrivateFields, canResetProgress } from '../lib/access.js';
 
 const NOW = Date.parse('2026-09-25T12:00:00Z');
 const FUTURE = '2026-11-01T00:00:00Z';
@@ -65,4 +65,23 @@ test('quem entra por link não recebe emails da equipe nem dos convidados', () =
   assert.deepEqual(stripPrivateFields(data, false), { event_title: 'X' });
   assert.deepEqual(stripPrivateFields(data, true), data);
   assert.deepEqual(data.member_emails, ['a@b.co'], 'não altera o original');
+});
+
+test('reiniciar o checklist: só dono e editor', () => {
+  assert.equal(canResetProgress('owner'), true);
+  assert.equal(canResetProgress('editor'), true);
+});
+
+test('reiniciar o checklist: membro sem edição, quem só tem o link e valores estranhos não podem', () => {
+  assert.equal(canResetProgress('member'), false);
+  assert.equal(canResetProgress(null), false);
+  assert.equal(canResetProgress(undefined), false);
+  assert.equal(canResetProgress('OWNER'), false);
+  assert.equal(canResetProgress('admin'), false);
+});
+
+test('o modo colaborar deixa o link marcar progresso, mas nunca reiniciar', () => {
+  const link = decideAccess({ role: null, via: 'token', shareMode: 'collab', tokenMatches: true, now: NOW });
+  assert.equal(link.canWriteProgress, true);
+  assert.equal(canResetProgress(null), false);
 });

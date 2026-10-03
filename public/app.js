@@ -1,5 +1,6 @@
 import { mergeGeneratedRoteiro, hasRoteiro } from './roteiro-draft.js';
 import { diffEventDrafts, draftToText } from './event-diff.js';
+import { nowStamp, formatStamp, formatStampFull, formatDelay, isLegacyStamp } from './progress-time.js';
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
@@ -7,6 +8,10 @@ if('serviceWorker' in navigator){
 
 (function(){
   const ICONS = ['pin', 'gear', 'mic', 'play', 'users', 'cup', 'chat', 'flag', 'film', 'box', 'signal', 'heart'];
+  const ICON_LABELS = {
+    pin: 'Local', gear: 'Equipamento', mic: 'Microfone', play: 'Vídeo', users: 'Pessoas', cup: 'Brinde',
+    chat: 'Conversa', flag: 'Marco', film: 'Filme', box: 'Detalhes', signal: 'Transmissão', heart: 'Momento especial'
+  };
 
   const EXAMPLE_ROTEIRO = `Evento: Ana & Bruno — Espaço Villa Verde, casamento com cerimônia e festa.
 
@@ -166,8 +171,31 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function icon(name){ return '<svg class="icon"><use href="#icon-'+name+'"/></svg>'; }
 
-  function iconOptions(selected){
-    return ICONS.map(i => '<option value="'+i+'"'+(i===selected?' selected':'')+'>'+i+'</option>').join('');
+  function iconLabel(name){ return ICON_LABELS[name] || 'Ícone'; }
+
+  // Grade de ícones no lugar do select com nomes em inglês. Fica fechada
+  // (mostra o ícone atual + "Trocar"); os radios com o mesmo name dão a
+  // navegação por setas do teclado de graça.
+  function iconPicker(scope, idx, selected, id, legend){
+    const current = ICONS.includes(selected) ? selected : 'flag';
+    const options = ICONS.map(name =>
+      '<label class="icon-option" title="'+iconLabel(name)+'">'+
+        '<input type="radio" name="'+id+'" value="'+name+'" data-scope="'+scope+'" data-idx="'+idx+'" data-field="icon"'+(name===current?' checked':'')+'>'+
+        icon(name)+'<span class="sr-only">'+iconLabel(name)+'</span>'+
+      '</label>'
+    ).join('');
+    return (
+      '<div class="icon-field">'+
+        '<div class="icon-current">'+
+          '<span class="icon-current-preview" id="'+id+'-preview" aria-hidden="true">'+icon(current)+'</span>'+
+          '<span class="icon-current-name"><span class="sr-only">Ícone: </span><span id="'+id+'-name">'+iconLabel(current)+'</span></span>'+
+          '<button type="button" class="btn btn-small" data-action="toggle-icons" aria-expanded="false" aria-controls="'+id+'-grid">Trocar ícone</button>'+
+        '</div>'+
+        '<fieldset class="icon-grid" id="'+id+'-grid" hidden>'+
+          '<legend class="sr-only">'+escapeHTML(legend)+'</legend>'+options+
+        '</fieldset>'+
+      '</div>'
+    );
   }
 
   // Dá um id estável (`key`) pra cada item de missão. Sem isso, o "feito"
@@ -351,6 +379,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   function renderPreviewAll(){
+    applySectionDefaults();
     updatePreviewContext();
     document.getElementById('previewBackBtn').textContent = hasRoteiro(draft) ? 'Substituir roteiro' : 'Adicionar roteiro';
     document.getElementById('previewEventTitle').value = draft.event_title;
@@ -379,22 +408,31 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         const scenePhaseOptions = draft.phases.map(p =>
           '<option value="'+escapeAttr(p.key)+'"'+(p.key===s.phase?' selected':'')+'>'+escapeHTML(p.label)+'</option>'
         ).join('');
+        const open = openSceneIds.has(s.id);
         return (
-          '<div class="preview-scene-card">'+
+          '<div class="preview-scene-card'+(open?' is-open':'')+'">'+
             '<div class="preview-scene-top">'+
-              '<span class="field-label" style="margin:0;">Cena '+(localIdx+1)+'</span>'+
+              '<button type="button" class="scene-toggle" data-action="toggle-scene" data-scene-id="'+escapeAttr(s.id)+'" aria-expanded="'+open+'" aria-controls="scene-body-'+i+'">'+
+                '<svg class="icon scene-toggle-chevron" aria-hidden="true" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>'+
+                '<span class="scene-toggle-icon" id="edit-scene-'+i+'-icon-preview-head" aria-hidden="true">'+icon(ICONS.includes(s.icon) ? s.icon : 'flag')+'</span>'+
+                '<span class="scene-toggle-text">'+
+                  '<span class="scene-toggle-title" id="scene-title-'+i+'">'+escapeHTML(s.title || 'Cena sem título')+'</span>'+
+                  '<span class="scene-toggle-meta" id="scene-meta-'+i+'">'+sceneMeta(localIdx, s)+'</span>'+
+                '</span>'+
+              '</button>'+
               '<div class="preview-scene-actions">'+
                 '<button type="button" class="icon-btn" aria-label="Mover cena para cima" data-action="move-scene-up" data-idx="'+i+'" '+(localIdx===0?'disabled':'')+'>↑</button>'+
                 '<button type="button" class="icon-btn" aria-label="Mover cena para baixo" data-action="move-scene-down" data-idx="'+i+'" '+(localIdx===scenesInPhase.length-1?'disabled':'')+'>↓</button>'+
                 '<button type="button" class="icon-btn danger" aria-label="Remover cena" data-action="remove-scene" data-idx="'+i+'">✕</button>'+
               '</div>'+
             '</div>'+
+            '<div class="preview-scene-body" id="scene-body-'+i+'"'+(open?'':' hidden')+'>'+
             '<div class="field-grid field-row">'+
               '<div><label class="field-label" for="edit-scene-'+i+'-title">Título</label><input id="edit-scene-'+i+'-title" class="field-input" data-scope="scene" data-idx="'+i+'" data-field="title" value="'+escapeAttr(s.title)+'"></div>'+
               '<div><label class="field-label" for="edit-scene-'+i+'-phase">Fase</label><select id="edit-scene-'+i+'-phase" class="field-select" data-scope="scene" data-idx="'+i+'" data-field="phase">'+scenePhaseOptions+'</select></div>'+
             '</div>'+
             '<div class="field-grid field-row">'+
-              '<div><label class="field-label" for="edit-scene-'+i+'-icon">Ícone</label><select id="edit-scene-'+i+'-icon" class="field-select" data-scope="scene" data-idx="'+i+'" data-field="icon">'+iconOptions(s.icon)+'</select></div>'+
+              '<div><span class="field-label">Ícone</span>'+iconPicker('scene', i, s.icon, 'edit-scene-'+i+'-icon', 'Ícone da cena')+'</div>'+
               '<div><label class="field-label" for="edit-scene-'+i+'-formato">Formato</label><input id="edit-scene-'+i+'-formato" class="field-input" data-scope="scene" data-idx="'+i+'" data-field="formato" value="'+escapeAttr(s.formato)+'"></div>'+
             '</div>'+
             '<div class="field-row"><label class="field-label" for="edit-scene-'+i+'-capture">Captura (uma por linha)</label><textarea id="edit-scene-'+i+'-capture" class="field-textarea" data-scope="scene" data-idx="'+i+'" data-field="capture" data-list="true">'+escapeHTML((s.capture||[]).join('\n'))+'</textarea></div>'+
@@ -402,6 +440,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
             '<div class="field-grid field-row">'+
               '<div><label class="field-label" for="edit-scene-'+i+'-can">Pode (uma por linha)</label><textarea id="edit-scene-'+i+'-can" class="field-textarea" data-scope="scene" data-idx="'+i+'" data-field="can" data-list="true">'+escapeHTML((s.can||[]).join('\n'))+'</textarea></div>'+
               '<div><label class="field-label" for="edit-scene-'+i+'-cannot">Não pode (uma por linha)</label><textarea id="edit-scene-'+i+'-cannot" class="field-textarea" data-scope="scene" data-idx="'+i+'" data-field="cannot" data-list="true">'+escapeHTML((s.cannot||[]).join('\n'))+'</textarea></div>'+
+            '</div>'+
             '</div>'+
           '</div>'
         );
@@ -411,20 +450,151 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         '<div class="preview-phase-block">'+
           '<div class="preview-phase-head">'+
             '<div class="field-row"><label class="field-label" for="edit-phase-'+pIdx+'-label">Fase</label><input id="edit-phase-'+pIdx+'-label" class="field-input" data-scope="phase" data-idx="'+pIdx+'" data-field="label" value="'+escapeAttr(phase.label)+'"></div>'+
-            '<div class="field-row icon-col"><label class="field-label" for="edit-phase-'+pIdx+'-icon">Ícone</label><select id="edit-phase-'+pIdx+'-icon" class="field-select" data-scope="phase" data-idx="'+pIdx+'" data-field="icon">'+iconOptions(phase.icon)+'</select></div>'+
             '<div class="preview-phase-actions">'+
               '<button type="button" class="icon-btn" aria-label="Mover fase para cima" data-action="move-phase-up" data-idx="'+pIdx+'" '+(pIdx===0?'disabled':'')+'>↑</button>'+
               '<button type="button" class="icon-btn" aria-label="Mover fase para baixo" data-action="move-phase-down" data-idx="'+pIdx+'" '+(pIdx===draft.phases.length-1?'disabled':'')+'>↓</button>'+
               '<button type="button" class="icon-btn danger" aria-label="Remover fase" data-action="remove-phase" data-idx="'+pIdx+'">✕</button>'+
             '</div>'+
           '</div>'+
+          '<div class="preview-phase-icon">'+iconPicker('phase', pIdx, phase.icon, 'edit-phase-'+pIdx+'-icon', 'Ícone da fase')+'</div>'+
           sceneCards+
           '<button type="button" class="add-btn" data-action="add-scene" data-phase-idx="'+pIdx+'">+ Adicionar cena nesta fase</button>'+
         '</div>'
       );
     }).join('');
 
+    roteiroEmpty.hidden = !!(draft.phases.length || draft.scenes.length);
     renderPreviewMissions();
+    updateSectionSummaries();
+  }
+
+  // ---------- seções da tela de criar/editar ----------
+  // Evento e roteiro abertos; equipe e Google recolhidos com uma linha de
+  // resumo. O padrão só é aplicado quando um rascunho novo entra na tela —
+  // re-renderizar (mover cena, trocar fase) mantém o que a pessoa abriu.
+
+  const sectionEvent = document.getElementById('sectionEvent');
+  const sectionRoteiro = document.getElementById('sectionRoteiro');
+  const sectionTeam = document.getElementById('sectionTeam');
+  const sectionGoogle = document.getElementById('sectionGoogle');
+  const roteiroEmpty = document.getElementById('roteiroEmpty');
+  const openSceneIds = new Set();
+  let sectionsDraft = null;
+
+  function applySectionDefaults(){
+    if(draft === sectionsDraft) return;
+    sectionsDraft = draft;
+    openSceneIds.clear();
+    sectionEvent.open = true;
+    sectionRoteiro.open = hasRoteiro(draft);
+    sectionTeam.open = false;
+    sectionGoogle.open = false;
+  }
+
+  function sceneMeta(localIdx, s){
+    const n = (s.capture || []).length;
+    return 'Cena ' + (localIdx + 1) + ' · ' + (n ? pluralize(n, 'item de captura', 'itens de captura') : 'sem itens de captura');
+  }
+
+  function formatEventWhen(value){
+    const d = new Date(value);
+    if(!value || isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' às ' +
+      d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  const SHARE_MODE_LABELS = { team: 'Somente equipe', view: 'Link para visualizar', collab: 'Link para colaborar' };
+
+  function updateSectionSummaries(){
+    if(!draft) return;
+    const when = formatEventWhen(draft.event_date);
+    const eventParts = [when, (draft.event_location || '').trim()].filter(Boolean);
+    document.getElementById('sectionEventSummary').textContent = eventParts.length ? eventParts.join(' · ') : 'Sem data e local';
+
+    const roteiroParts = [];
+    if(draft.phases.length) roteiroParts.push(pluralize(draft.phases.length, 'fase', 'fases'));
+    if(draft.scenes.length) roteiroParts.push(pluralize(draft.scenes.length, 'cena', 'cenas'));
+    if(draft.missions.length) roteiroParts.push(pluralize(draft.missions.length, 'missão', 'missões'));
+    document.getElementById('sectionRoteiroSummary').textContent = roteiroParts.length ? roteiroParts.join(' · ') : 'Sem roteiro ainda';
+
+    const members = (draft.member_emails || []).length;
+    const teamParts = [members ? pluralize(members, 'membro', 'membros') : 'Nenhum membro'];
+    if(!shareSettings.hidden && SHARE_MODE_LABELS[draft.share_mode]) teamParts.push(SHARE_MODE_LABELS[draft.share_mode]);
+    document.getElementById('sectionTeamSummary').textContent = teamParts.join(' · ');
+
+    const guests = (draft.calendar_guests || []).length;
+    const folders = (draft.drive_folders || []).length;
+    const googleParts = [];
+    if(guests) googleParts.push(pluralize(guests, 'convidado', 'convidados'));
+    if(draft.drive_folder_id) googleParts.push('pasta criada no Drive');
+    else if(folders) googleParts.push(pluralize(folders, 'pasta planejada', 'pastas planejadas'));
+    document.getElementById('sectionGoogleSummary').textContent = googleParts.length ? googleParts.join(' · ') : 'Nada configurado';
+  }
+
+  previewView.addEventListener('input', updateSectionSummaries);
+  previewView.addEventListener('change', updateSectionSummaries);
+
+  document.getElementById('roteiroEmptyAddBtn').addEventListener('click', function(){
+    document.getElementById('previewBackBtn').click();
+  });
+
+  function toggleScene(btn){
+    const id = btn.dataset.sceneId;
+    const body = document.getElementById(btn.getAttribute('aria-controls'));
+    const open = btn.getAttribute('aria-expanded') !== 'true';
+    if(open) openSceneIds.add(id); else openSceneIds.delete(id);
+    btn.setAttribute('aria-expanded', String(open));
+    if(body) body.hidden = !open;
+    const card = btn.closest('.preview-scene-card');
+    if(card) card.classList.toggle('is-open', open);
+  }
+
+  function toggleIconGrid(btn){
+    const grid = document.getElementById(btn.getAttribute('aria-controls'));
+    if(!grid) return;
+    const open = btn.getAttribute('aria-expanded') !== 'true';
+    btn.setAttribute('aria-expanded', String(open));
+    grid.hidden = !open;
+    if(open){
+      const checked = grid.querySelector('input:checked') || grid.querySelector('input');
+      if(checked) checked.focus();
+    }
+  }
+
+  // Escolher com mouse/toque fecha a grade; com as setas do teclado a grade
+  // fica aberta (cada seta já troca a seleção).
+  let lastIconPointer = 0;
+  previewView.addEventListener('pointerdown', function(e){
+    if(e.target.closest && e.target.closest('.icon-option')) lastIconPointer = Date.now();
+  });
+  previewView.addEventListener('change', function(e){
+    const grid = e.target.closest && e.target.closest('.icon-grid');
+    if(!grid || Date.now() - lastIconPointer > 1500) return;
+    const btn = previewView.querySelector('[aria-controls="'+grid.id+'"]');
+    if(!btn) return;
+    btn.setAttribute('aria-expanded', 'false');
+    grid.hidden = true;
+    btn.focus();
+  });
+
+  // A linha da cena recolhida acompanha o que é digitado dentro dela.
+  function refreshSceneHead(idx){
+    const s = draft.scenes[idx];
+    if(!s) return;
+    const localIdx = draft.scenes.slice(0, idx).filter(x => x.phase === s.phase).length;
+    const title = document.getElementById('scene-title-'+idx);
+    const meta = document.getElementById('scene-meta-'+idx);
+    const headIcon = document.getElementById('edit-scene-'+idx+'-icon-preview-head');
+    if(title) title.textContent = s.title || 'Cena sem título';
+    if(meta) meta.textContent = sceneMeta(localIdx, s);
+    if(headIcon) headIcon.innerHTML = icon(ICONS.includes(s.icon) ? s.icon : 'flag');
+  }
+
+  function updateIconPreview(id, name){
+    const preview = document.getElementById(id + '-preview');
+    const label = document.getElementById(id + '-name');
+    if(preview) preview.innerHTML = icon(name);
+    if(label) label.textContent = iconLabel(name);
   }
 
   function renderPreviewMissions(){
@@ -469,9 +639,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
     if(scope === 'phase'){
       draft.phases[idx][field] = value;
+      if(field === 'icon') updateIconPreview('edit-phase-'+idx+'-icon', value);
     } else if(scope === 'scene'){
       draft.scenes[idx][field] = value;
-      if(field === 'phase'){ renderPreviewAll(); }
+      if(field === 'phase'){ renderPreviewAll(); return; }
+      refreshSceneHead(idx);
+      if(field === 'icon') updateIconPreview('edit-scene-'+idx+'-icon', value);
     } else if(scope === 'missionCat'){
       draft.missions[idx][field] = value;
     } else if(scope === 'missionItems'){
@@ -499,6 +672,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const end = new Date(endVal);
     const invalid = isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start;
     eventDateWarning.hidden = !invalid;
+    // aviso não pode ficar escondido dentro de uma seção fechada
+    if(invalid) sectionEvent.open = true;
   }
 
   previewEventDate.addEventListener('input', function(e){
@@ -545,6 +720,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     } else {
       driveFolderAction.innerHTML = '<button class="btn" id="createDriveFolderBtn" type="button">📁 Criar estrutura no Google Drive</button>';
     }
+    updateSectionSummaries();
   }
 
   async function createDriveFolderStructure(){
@@ -783,11 +959,16 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   // Link só de visualização: a checklist aparece, mas marcar progresso fica
   // bloqueado aqui também (o servidor recusa de qualquer forma).
+  // Reiniciar apaga o progresso de todos: só dono e editores (o servidor confere).
+  function canReset(){
+    return currentAccess.role === 'owner' || currentAccess.role === 'editor';
+  }
+
   function applyReadOnlyState(){
     const readOnly = !currentAccess.canWriteProgress;
     appView.classList.toggle('is-readonly', readOnly);
     document.querySelectorAll('.status-btn, .mission-chip').forEach(btn => { btn.disabled = readOnly; });
-    document.getElementById('resetBtn').hidden = readOnly;
+    document.getElementById('resetBtn').hidden = readOnly || !canReset();
     const sub = document.getElementById('eventSub');
     const base = sub.textContent.replace(/ · somente visualização$/, '');
     sub.textContent = readOnly ? base + ' · somente visualização' : base;
@@ -1356,6 +1537,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   let flushingOfflineQueue = false;
   let droppedProgressCount = 0;
+  let droppedInvalidCount = 0; // recusadas por formato inválido (tela desatualizada), não por acesso
 
   async function flushProgressQueue(){
     if(flushingOfflineQueue) return;
@@ -1377,6 +1559,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         // ação malformada): nunca vai passar, então sai da fila em vez de
         // travar as ações seguintes. 401/5xx/429 podem passar depois.
         if([400, 403, 404, 410].includes(resp.status)){
+          const body = await resp.json().catch(() => ({}));
+          if(body && body.code === 'invalid_payload') droppedInvalidCount++;
           await removeFromOfflineQueue(item.id);
           droppedProgressCount++;
           continue;
@@ -1397,7 +1581,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(count === 0 && droppedProgressCount > 0){
       el.hidden = false;
       el.classList.add('sync-status--offline');
-      textEl.textContent = droppedProgressCount + (droppedProgressCount === 1 ? ' ação não foi salva' : ' ações não foram salvas') + ': o acesso a este evento mudou';
+      const onlyInvalid = droppedInvalidCount === droppedProgressCount;
+      textEl.textContent = droppedProgressCount + (droppedProgressCount === 1 ? ' ação não foi salva' : ' ações não foram salvas') +
+        (onlyInvalid ? ': o servidor recusou os dados (atualize a página)' : ': o acesso a este evento mudou');
       return;
     }
     if(count === 0){
@@ -1494,7 +1680,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     else if(action === 'unrecord') applyStatus(payload.sceneId, null);
     else if(action === 'mission') applyMissionKey(payload.cat + '-' + (payload.itemKey ?? payload.idx), true);
     else if(action === 'unmission') applyMissionKey(payload.cat + '-' + (payload.itemKey ?? payload.idx), false);
-    else if(action === 'reset') resetAllProgress();
+    else if(action === 'reset'){
+      resetAllProgress();
+      // quem reiniciou já viu o próprio aviso (com o "Desfazer")
+      if(Date.now() - lastLocalResetAt > 10000) showToast('O checklist foi reiniciado por alguém da equipe.', { ms: 8000 });
+    }
     else if(action === 'access_changed'){
       // o dono mudou o compartilhamento: confere de novo se este aparelho ainda tem acesso
       if(progressStream){ progressStream.close(); progressStream = null; }
@@ -2035,16 +2225,16 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       });
     }
     if(stamp){
-      if(status === 'andamento') stamp.textContent = 'EM ANDAMENTO' + (recorded[id].andamentoAt ? ' · '+recorded[id].andamentoAt : '');
-      else if(status === 'feito') stamp.textContent = 'CAPTURADO' + (recorded[id].feitoAt ? ' · '+recorded[id].feitoAt : '');
-      else if(status === 'postado') stamp.textContent = 'POSTADO' + (recorded[id].postadoAt ? ' · '+recorded[id].postadoAt : '');
+      if(status === 'andamento') stamp.textContent = 'EM ANDAMENTO' + (recorded[id].andamentoAt ? ' · '+formatStamp(recorded[id].andamentoAt) : '');
+      else if(status === 'feito') stamp.textContent = 'CAPTURADO' + (recorded[id].feitoAt ? ' · '+formatStamp(recorded[id].feitoAt) : '');
+      else if(status === 'postado') stamp.textContent = 'POSTADO' + (recorded[id].postadoAt ? ' · '+formatStamp(recorded[id].postadoAt) : '');
       else stamp.textContent = 'CAPTURADO';
     }
     if(timesEl){
       const parts = [];
-      if(recorded[id] && recorded[id].andamentoAt) parts.push('Iniciado ' + recorded[id].andamentoAt);
-      if(recorded[id] && recorded[id].feitoAt) parts.push('Concluído ' + recorded[id].feitoAt);
-      if(recorded[id] && recorded[id].postadoAt) parts.push('Postado ' + recorded[id].postadoAt);
+      if(recorded[id] && recorded[id].andamentoAt) parts.push('Iniciado ' + formatStamp(recorded[id].andamentoAt));
+      if(recorded[id] && recorded[id].feitoAt) parts.push('Concluído ' + formatStamp(recorded[id].feitoAt));
+      if(recorded[id] && recorded[id].postadoAt) parts.push('Postado ' + formatStamp(recorded[id].postadoAt));
       timesEl.textContent = parts.join(' · ');
     }
 
@@ -2074,8 +2264,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       sendProgress('status', { sceneId: id, status: 'nao_iniciado', andamentoAt: null, feitoAt: null, postadoAt: null });
       return;
     }
-    const now = new Date();
-    const time = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    // capturado agora, no toque: se a ação ficar na fila offline, o horário
+    // continua sendo o do toque, não o da sincronização
+    const time = nowStamp();
     const prev = recorded[id] || {};
     const entry = {
       status,
@@ -2148,11 +2339,20 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         draft.phases[idx] = draft.phases[target];
         draft.phases[target] = tmp;
         renderPreviewAll();
+      } else if(action === 'toggle-scene'){
+        toggleScene(structBtn);
+      } else if(action === 'toggle-icons'){
+        toggleIconGrid(structBtn);
       } else if(action === 'add-scene'){
         const phaseIdx = Number(structBtn.dataset.phaseIdx);
         const phase = draft.phases[phaseIdx];
-        draft.scenes.push({ id: 'cena_' + Math.random().toString(36).slice(2, 8), phase: phase.key, title: 'Nova cena', icon: 'flag', formato: 'Story ao vivo', capture: [], speech: '', can: [], cannot: [] });
+        const scene = { id: 'cena_' + Math.random().toString(36).slice(2, 8), phase: phase.key, title: 'Nova cena', icon: 'flag', formato: 'Story ao vivo', capture: [], speech: '', can: [], cannot: [] };
+        draft.scenes.push(scene);
+        // cena nova já abre, com o cursor no título
+        openSceneIds.add(scene.id);
         renderPreviewAll();
+        const titleInput = document.getElementById('edit-scene-'+(draft.scenes.length - 1)+'-title');
+        if(titleInput){ titleInput.focus(); if(titleInput.select) titleInput.select(); }
       } else if(action === 'remove-scene'){
         draft.scenes.splice(idx, 1);
         renderPreviewAll();
@@ -2177,25 +2377,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   // ---------- relatório pós-evento ----------
 
-  // Mesma lógica de lib/pure.js#formatDelay, duplicada aqui porque app.js
-  // roda solto no navegador (script normal, não módulo ES) e não dá pra
-  // importar do lib/. Calcula quanto tempo passou entre dois horários
-  // "HH:MM" do mesmo evento (de "Feito" até "Postado"), já formatado.
-  function formatDelay(from, to){
-    const parse = (s) => {
-      const m = typeof s === 'string' && /^(\d{1,2}):(\d{2})$/.exec(s);
-      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-    };
-    const a = parse(from);
-    const b = parse(to);
-    if(a === null || b === null) return null;
-    let diff = b - a;
-    if(diff < 0) diff += 24 * 60;
-    const h = Math.floor(diff / 60);
-    const m = diff % 60;
-    return h > 0 ? h+'h'+String(m).padStart(2,'0') : m+'min';
-  }
-
   function generateReport(){
     const eventTitle = document.getElementById('eventTitle').value || 'Evento';
     const total = CONTENT.length;
@@ -2214,16 +2395,18 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         const entry = recorded[item.id];
         const status = entry ? statusLabel[entry.status] || '—' : 'Não iniciado';
         const delay = entry ? formatDelay(entry.feitoAt, entry.postadoAt) : null;
+        // registro de antes da data ser guardada: mostra o horário, mas não chuta a demora
+        const delayLegacy = !delay && entry && entry.feitoAt && entry.postadoAt && (isLegacyStamp(entry.feitoAt) || isLegacyStamp(entry.postadoAt));
         return (
           '<tr>'+
             '<td class="report-status">'+(entry && (entry.status === 'feito' || entry.status === 'postado') ? '✓' : '—')+'</td>'+
             '<td>'+escapeHTML(item.title)+'</td>'+
             '<td class="report-muted">'+escapeHTML(item.formato)+'</td>'+
             '<td class="report-muted">'+escapeHTML(status)+'</td>'+
-            '<td class="report-muted">'+(entry && entry.andamentoAt ? escapeHTML(entry.andamentoAt) : '—')+'</td>'+
-            '<td class="report-muted">'+(entry && entry.feitoAt ? escapeHTML(entry.feitoAt) : '—')+'</td>'+
-            '<td class="report-muted">'+(entry && entry.postadoAt ? escapeHTML(entry.postadoAt) : '—')+'</td>'+
-            '<td class="report-muted">'+(delay ? escapeHTML(delay) : '—')+'</td>'+
+            '<td class="report-muted">'+(entry && entry.andamentoAt ? escapeHTML(formatStampFull(entry.andamentoAt)) : '—')+'</td>'+
+            '<td class="report-muted">'+(entry && entry.feitoAt ? escapeHTML(formatStampFull(entry.feitoAt)) : '—')+'</td>'+
+            '<td class="report-muted">'+(entry && entry.postadoAt ? escapeHTML(formatStampFull(entry.postadoAt)) : '—')+'</td>'+
+            '<td class="report-muted"'+(delayLegacy ? ' title="Registrado sem data: a demora não pode ser calculada"' : '')+'>'+(delay ? escapeHTML(delay) : '—')+'</td>'+
           '</tr>'
         );
       }).join('');
@@ -2267,27 +2450,133 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   document.getElementById('reportBackBtn').addEventListener('click', function(){ showView('app'); });
   document.getElementById('reportPrintBtn').addEventListener('click', function(){ window.print(); });
 
+  // ---------- aviso temporário ----------
+
+  const appToast = document.getElementById('appToast');
+  const appToastText = document.getElementById('appToastText');
+  const appToastAction = document.getElementById('appToastAction');
+  let toastTimer = null;
+  let toastAction = null;
+
+  function hideToast(){
+    clearTimeout(toastTimer);
+    toastAction = null;
+    appToast.hidden = true;
+  }
+
+  function showToast(text, { actionLabel = '', onAction = null, ms = 6000 } = {}){
+    clearTimeout(toastTimer);
+    appToastText.textContent = text;
+    toastAction = onAction;
+    appToastAction.hidden = !actionLabel;
+    appToastAction.textContent = actionLabel;
+    appToast.hidden = false;
+    toastTimer = setTimeout(hideToast, ms);
+  }
+
+  appToastAction.addEventListener('click', function(){
+    const action = toastAction;
+    hideToast();
+    if(action) action();
+  });
+
+  // ---------- reiniciar o checklist ----------
+  // Apaga o progresso da equipe inteira, então: só dono e editores (o servidor
+  // também recusa), confirmação com o que será apagado, só com internet e sem
+  // ações pendentes na fila (senão o reinício passaria na frente delas), e 30 s
+  // pra desfazer na tela de quem reiniciou.
+
   const resetBtn = document.getElementById('resetBtn');
-  let confirming = false;
-  let confirmTimer = null;
-  resetBtn.addEventListener('click', function(){
-    if(!currentAccess.canWriteProgress) return;
-    if(!confirming){
-      confirming = true;
-      resetBtn.classList.add('confirming');
-      resetBtn.textContent = 'Clique novamente para confirmar';
-      confirmTimer = setTimeout(()=>{
-        confirming = false;
-        resetBtn.classList.remove('confirming');
-        resetBtn.textContent = '↺ Reiniciar checklist';
-      }, 3000);
-    } else {
-      clearTimeout(confirmTimer);
+  const resetDialog = document.getElementById('resetDialog');
+  const resetDialogText = document.getElementById('resetDialogText');
+  const resetConfirmBtn = document.getElementById('resetConfirmBtn');
+  const resetCancelBtn = document.getElementById('resetCancelBtn');
+  const UNDO_RESET_MS = 30000;
+  let lastLocalResetAt = 0;
+
+  function openResetDialog(){
+    if(typeof resetDialog.showModal === 'function') resetDialog.showModal();
+    else resetDialog.setAttribute('open', '');
+  }
+
+  function closeResetDialog(){
+    if(typeof resetDialog.close === 'function') resetDialog.close();
+    else resetDialog.removeAttribute('open');
+  }
+
+  // O que existia antes do reinício, com os horários originais, pra "Desfazer".
+  function takeProgressSnapshot(){
+    const scenes = Object.entries(recorded).map(([sceneId, entry]) => ({ sceneId, entry: Object.assign({}, entry) }));
+    const missions = [];
+    MISSIONS.forEach(cat => cat.items.forEach(item => {
+      if(missionsDone[cat.key + '-' + item.key]) missions.push({ cat: cat.key, itemKey: item.key });
+    }));
+    return { scenes, missions };
+  }
+
+  function undoReset(snapshot){
+    let restored = 0;
+    snapshot.scenes.forEach(({ sceneId, entry }) => {
+      if(recorded[sceneId]) return; // alguém já marcou de novo: o mais novo vale
+      applyStatus(sceneId, entry);
+      sendProgress('status', { sceneId, ...entry });
+      restored++;
+    });
+    snapshot.missions.forEach(mission => {
+      const key = mission.cat + '-' + mission.itemKey;
+      if(missionsDone[key]) return;
+      applyMissionKey(key, true);
+      sendProgress('mission', mission);
+      restored++;
+    });
+    showToast(restored ? 'Checklist restaurado.' : 'Nada a restaurar: o checklist já foi marcado de novo.', { ms: 5000 });
+  }
+
+  resetBtn.addEventListener('click', async function(){
+    if(!currentAccess.canWriteProgress || !canReset()) return;
+    if(!navigator.onLine){
+      showToast('Sem conexão: só dá pra reiniciar com internet, pra não apagar o que a equipe marcou nesse meio tempo.', { ms: 8000 });
+      return;
+    }
+    if((await readOfflineQueue()).length){
+      showToast('Ainda há ações sincronizando. Espere terminar e tente de novo.', { ms: 6000 });
+      return;
+    }
+    const scenes = Object.keys(recorded).length;
+    const missions = Object.keys(missionsDone).length;
+    if(!scenes && !missions){
+      showToast('Não há nada marcado pra reiniciar.', { ms: 4000 });
+      return;
+    }
+    resetDialogText.textContent = 'Isso apaga o progresso de ' + pluralize(scenes, 'cena com progresso', 'cenas com progresso') +
+      ' e ' + pluralize(missions, 'missão marcada', 'missões marcadas') + ', pra toda a equipe. Você terá 30 segundos pra desfazer.';
+    resetConfirmBtn.disabled = false;
+    openResetDialog();
+  });
+
+  resetCancelBtn.addEventListener('click', closeResetDialog);
+
+  resetConfirmBtn.addEventListener('click', async function(){
+    resetConfirmBtn.disabled = true;
+    const snapshot = takeProgressSnapshot();
+    // marcado antes de enviar: o tempo real pode entregar o reinício antes da
+    // resposta, e quem reiniciou não deve ver o aviso "por alguém da equipe"
+    lastLocalResetAt = Date.now();
+    try {
+      const resp = await postProgress({ eventId: currentEventId, action: 'reset', payload: {}, route: { kind: 'id', key: currentEventId, auth: true } });
+      if(!resp.ok){
+        const body = await resp.json().catch(() => ({}));
+        const error = new Error('recusado');
+        error.serverMessage = body && body.error;
+        throw error;
+      }
       resetAllProgress();
-      sendProgress('reset', {});
-      confirming = false;
-      resetBtn.classList.remove('confirming');
-      resetBtn.textContent = '↺ Reiniciar checklist';
+      closeResetDialog();
+      showToast('Checklist reiniciado.', { actionLabel: 'Desfazer', onAction: () => undoReset(snapshot), ms: UNDO_RESET_MS });
+    } catch(err){
+      lastLocalResetAt = 0;
+      closeResetDialog();
+      showToast((err && err.serverMessage) || 'Não consegui reiniciar agora. Nada foi apagado.', { ms: 8000 });
     }
   });
 

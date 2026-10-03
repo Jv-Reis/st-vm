@@ -11,9 +11,10 @@ import { OAuth2Client } from 'google-auth-library';
 import { createCalendarWorker } from './lib/calendar-sync.js';
 import * as Sentry from '@sentry/node';
 import { foldProgress, validEventPayload, splitDriveFolderPath, makeRateLimiter, filterValidEmails } from './lib/pure.js';
-import { decideAccess, isValidShareToken, isValidEventId, normalizeShareMode, stripPrivateFields } from './lib/access.js';
+import { decideAccess, isValidShareToken, isValidEventId, normalizeShareMode, stripPrivateFields, canResetProgress } from './lib/access.js';
 import { createInviteProcessor, normalizeEmailList, summarizeInvites } from './lib/member-invites.js';
 import { createWorkerLogger } from './lib/transient.js';
+import { sanitizeProgressPayload } from './lib/progress-payload.js';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -83,6 +84,23 @@ const progressRateLimit = makeRateLimiter(
   60 * 1000, 120,
   'Muitas atualizações de progresso em pouco tempo. Espere um instante e tente de novo.'
 );
+// por evento (somando todo mundo que escreve nele, de qualquer IP): o limite
+// por IP sozinho não segura vários IPs no mesmo evento. 60/min é bem mais que
+// uma equipe real marca, e limita o pior caso de gravação a ~17 MB por dia.
+const progressEventLimit = makeRateLimiter(
+  60 * 1000, 60,
+  'Muitas atualizações neste evento em pouco tempo. Espere um instante e tente de novo.'
+);
+const resetEventLimit = makeRateLimiter(
+  60 * 60 * 1000, 3,
+  'Este checklist já foi reiniciado 3 vezes na última hora. Espere um pouco antes de reiniciar de novo.'
+);
+// usa o limitador (feito pra middleware) dentro de um handler, com chave própria
+function passesLimit(limiter, key, res) {
+  let passed = false;
+  limiter({ ip: key }, res, () => { passed = true; });
+  return passed;
+}
 // por conta, não por IP — convite manda email de verdade (Supabase Auth), então
 // existe custo real de abuso além de carga no servidor.
 const addMemberRateLimit = makeRateLimiter(
@@ -1216,9 +1234,15 @@ function closeLinkStreams(eventId) {
 }
 
 async function handleProgress(req, res, { eventId = null, token = null }) {
-  const { action, payload } = req.body || {};
+  const { action } = req.body || {};
   if (!PROGRESS_ACTIONS.has(action)) {
-    return res.status(400).json({ error: 'Ação de progresso inválida.' });
+    return res.status(400).json({ code: 'invalid_payload', error: 'Ação de progresso inválida.' });
+  }
+  // só grava (e transmite) o que foi reconstruído a partir da lista de campos
+  // de cada ação — nunca o corpo cru, que podia ter até 1 MB
+  const clean = sanitizeProgressPayload(action, req.body.payload);
+  if (!clean.ok) {
+    return res.status(400).json({ code: 'invalid_payload', error: clean.error });
   }
   if (!supabaseAdmin) {
     return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor.' });
@@ -1230,9 +1254,18 @@ async function handleProgress(req, res, { eventId = null, token = null }) {
     if (!ctx.decision.canWriteProgress) {
       return res.status(403).json({ code: 'read_only', error: 'Este link só permite visualizar. Peça o link de colaboração a quem organiza o evento.' });
     }
-    const { error } = await supabaseAdmin.from('event_progress').insert({ event_id: ctx.event.id, action, payload: payload || {} });
+    if (action === 'reset' && !canResetProgress(ctx.role)) {
+      return res.status(403).json({ code: 'reset_forbidden', error: 'Só o dono e quem edita o evento podem reiniciar o checklist.' });
+    }
+    if (!passesLimit(progressEventLimit, ctx.event.id, res)) return;
+    if (action === 'reset' && !passesLimit(resetEventLimit, ctx.event.id, res)) return;
+    const { error } = await supabaseAdmin.from('event_progress').insert({ event_id: ctx.event.id, action, payload: clean.payload });
     if (error) throw error;
-    broadcastProgress(ctx.event.id, { action, payload: payload || {} });
+    // reinício apaga o progresso de todos: fica registrado quem fez (o log de
+    // progresso em si não guarda autor). O log é append-only, então o que havia
+    // antes continua no banco e dá pra recuperar (ver README).
+    if (action === 'reset') console.info('Checklist reiniciado: evento', ctx.event.id, 'por', user.id);
+    broadcastProgress(ctx.event.id, { action, payload: clean.payload });
     res.json({ ok: true });
   } catch (err) {
     logError('Erro ao salvar progresso:', err);

@@ -201,3 +201,128 @@ test('aba antiga sem versão: 428 vira tela de conflito em vez de erro', async (
   assert.equal(b.element('conflictPanel').hidden, false);
   assert.deepEqual(b.alerts, []);
 });
+
+// ---------- reiniciar o checklist ----------
+
+const FEITO = '2026-10-12T21:00:00.000Z';
+const progressData = (access) => eventData({
+  id: 'ev1', access,
+  missions: [{ key: 'm1', emoji: '', label: 'Flagras', items: [{ key: 'item_a', text: 'Choro' }] }],
+  progress: {
+    recorded: { c1: { status: 'feito', andamentoAt: null, feitoAt: FEITO, postadoAt: null } },
+    missionsDone: { 'm1-item_a': true }
+  }
+});
+const OWNER = { role: 'owner', basis: 'team', can_write_progress: true, share_mode: 'collab' };
+const progressPosts = (b) => b.calls.filter(c => /\/progress$/.test(c.url) && c.method === 'POST').map(c => ({ url: c.url, body: JSON.parse(c.body) }));
+const openEvent = (access, extra = {}) => browser({
+  path: '/e/ev1',
+  routes: (url, options) => (url === '/api/events/ev1' && !options.method ? jsonResponse(progressData(access)) : (extra.routes ? extra.routes(url, options) : null))
+});
+
+test('reiniciar: botão só pra dono e editor; membro sem edição e quem tem só o link não veem', async () => {
+  for (const [access, visible] of [
+    [OWNER, true],
+    [{ ...OWNER, role: 'editor' }, true],
+    [{ ...OWNER, role: 'member' }, false],
+    [{ role: null, basis: 'link', can_write_progress: true, share_mode: 'collab' }, false]
+  ]) {
+    const b = await openEvent(access);
+    assert.equal(b.element('resetBtn').hidden, !visible, 'role ' + access.role);
+  }
+});
+
+test('reiniciar: um toque não apaga nada, só abre o diálogo dizendo o que será apagado', async () => {
+  const b = await openEvent(OWNER);
+  await b.click('resetBtn');
+  assert.equal(b.element('resetDialog').open, true);
+  assert.match(b.element('resetDialogText').textContent, /1 cena com progresso e 1 missão marcada/);
+  assert.match(b.element('resetDialogText').textContent, /pra toda a equipe/);
+  assert.deepEqual(progressPosts(b), [], 'nada foi enviado ainda');
+  // o segundo toque não confirma mais nada: o botão do diálogo é outro
+  await b.click('resetBtn');
+  assert.deepEqual(progressPosts(b), []);
+});
+
+test('reiniciar: cancelar fecha o diálogo sem enviar nada', async () => {
+  const b = await openEvent(OWNER);
+  await b.click('resetBtn');
+  await b.click('resetCancelBtn');
+  assert.equal(b.element('resetDialog').open, false);
+  assert.deepEqual(progressPosts(b), []);
+});
+
+test('reiniciar: confirmar envia o reinício pelo endereço do evento, com login, e oferece desfazer', async () => {
+  const b = await openEvent(OWNER);
+  await b.click('resetBtn');
+  await b.click('resetConfirmBtn');
+  const posts = progressPosts(b);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].url, '/api/events/ev1/progress');
+  assert.deepEqual(posts[0].body, { action: 'reset', payload: {} });
+  assert.equal(b.calls.find(c => /\/progress$/.test(c.url)).headers.Authorization, 'Bearer test');
+  assert.equal(b.element('resetDialog').open, false);
+  assert.equal(b.element('appToast').hidden, false);
+  assert.match(b.element('appToastText').textContent, /Checklist reiniciado/);
+  assert.equal(b.element('appToastAction').hidden, false);
+  assert.equal(b.element('appToastAction').textContent, 'Desfazer');
+});
+
+test('reiniciar: desfazer reenvia as marcações com os horários originais', async () => {
+  const b = await openEvent(OWNER);
+  await b.click('resetBtn');
+  await b.click('resetConfirmBtn');
+  await b.click('appToastAction');
+  const posts = progressPosts(b).slice(1);
+  assert.deepEqual(posts.map(p => p.body.action).sort(), ['mission', 'status']);
+  const status = posts.find(p => p.body.action === 'status').body.payload;
+  assert.deepEqual(status, { sceneId: 'c1', status: 'feito', andamentoAt: null, feitoAt: FEITO, postadoAt: null });
+  assert.deepEqual(posts.find(p => p.body.action === 'mission').body.payload, { cat: 'm1', itemKey: 'item_a' });
+  assert.match(b.element('appToastText').textContent, /restaurado/);
+});
+
+test('reiniciar: o servidor recusou (403), nada é apagado e a mensagem do servidor aparece', async () => {
+  const b = await openEvent(OWNER, {
+    routes: (url, options) => (/\/progress$/.test(url) && options.method === 'POST'
+      ? jsonResponse({ code: 'reset_forbidden', error: 'Só o dono e quem edita o evento podem reiniciar o checklist.' }, { ok: false, status: 403 })
+      : null)
+  });
+  await b.click('resetBtn');
+  await b.click('resetConfirmBtn');
+  assert.match(b.element('appToastText').textContent, /Só o dono e quem edita/);
+  assert.equal(b.element('appToastAction').hidden, true, 'sem "Desfazer": nada foi apagado');
+  assert.equal(b.element('resetDialog').open, false);
+});
+
+test('reiniciar: sem internet não reinicia', async () => {
+  const b = await openEvent(OWNER);
+  b.navigator.onLine = false;
+  await b.click('resetBtn');
+  assert.equal(b.element('resetDialog').open, undefined, 'diálogo nem abre');
+  assert.match(b.element('appToastText').textContent, /Sem conexão/);
+  assert.deepEqual(progressPosts(b), []);
+});
+
+test('reiniciar: sem nada marcado, avisa em vez de abrir o diálogo', async () => {
+  const b = await browser({
+    path: '/e/ev1',
+    routes: (url, options) => (url === '/api/events/ev1' && !options.method
+      ? jsonResponse(eventData({ id: 'ev1', access: OWNER, progress: { recorded: {}, missionsDone: {} } })) : null)
+  });
+  await b.click('resetBtn');
+  assert.equal(b.element('resetDialog').open, undefined);
+  assert.match(b.element('appToastText').textContent, /nada marcado/);
+});
+
+test('reiniciar: a equipe vê um aviso quando outra pessoa reinicia, mas quem reiniciou vê só o próprio aviso', async () => {
+  const b = await openEvent(OWNER);
+  const message = { data: JSON.stringify({ action: 'reset', payload: {} }) };
+  b.streams[0].onmessage(message);
+  assert.match(b.element('appToastText').textContent, /reiniciado por alguém da equipe/);
+
+  await b.click('resetBtn');
+  await b.click('resetConfirmBtn');
+  b.streams[0].onmessage(message); // o tempo real devolve o reinício de quem acabou de reiniciar
+  assert.match(b.element('appToastText').textContent, /Checklist reiniciado\./);
+  assert.doesNotMatch(b.element('appToastText').textContent, /alguém da equipe/);
+});

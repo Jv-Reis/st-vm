@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { mergeGeneratedRoteiro, hasRoteiro } from '../public/roteiro-draft.js';
 import { diffEventDrafts, draftToText } from '../public/event-diff.js';
+import { nowStamp, formatStamp, formatStampFull, formatDelay, isLegacyStamp } from '../public/progress-time.js';
 
 export const VALID_CONFIG = { supabaseUrl: 'https://captura-test.supabase.co', supabaseAnonKey: 'anon-test-key' };
 
@@ -20,13 +21,14 @@ export async function browser({
   session = { user: { id: 'owner', email: 'dono@example.com' }, access_token: 'test' },
   config = VALID_CONFIG, routes, caches, supabaseGlobal = true, generated, online = true
 } = {}) {
-  const elements = new Map(), calls = [], alerts = [], confirmations = [], clipboard = [];
+  const elements = new Map(), calls = [], alerts = [], confirmations = [], clipboard = [], streams = [], documentHandlers = {};
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
       id, value: '', hidden: false, disabled: false, checked: false, readOnly: false, innerHTML: '', textContent: '', style: {}, dataset: {}, handlers: {},
       classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
       addEventListener(type, fn) { this.handlers[type] = fn; },
-      querySelectorAll() { return []; }, setAttribute() {}, focus() {}, replaceChildren() {}, select() {}, scrollIntoView() {}
+      querySelectorAll() { return []; }, setAttribute() {}, removeAttribute() {}, focus() {}, replaceChildren() {}, select() {}, scrollIntoView() {},
+      showModal() { this.open = true; }, close() { this.open = false; }
     });
     return elements.get(id);
   }
@@ -37,7 +39,8 @@ export async function browser({
   const context = {
     mergeGeneratedRoteiro: (existing, result) => mergeGeneratedRoteiro(existing, result, () => webcrypto.randomUUID()),
     hasRoteiro, diffEventDrafts, draftToText,
-    document: { getElementById: element, querySelectorAll: () => [], querySelector: () => null, addEventListener() {}, activeElement: null, visibilityState: 'visible' },
+    nowStamp, formatStamp, formatStampFull, formatDelay, isLegacyStamp,
+    document: { getElementById: element, querySelectorAll: () => [], querySelector: () => null, addEventListener(type, fn) { (documentHandlers[type] ||= []).push(fn); }, activeElement: null, visibilityState: 'visible' },
     window: { location, addEventListener() {}, scrollTo() {} },
     navigator: { onLine: online, clipboard: { writeText: async text => { clipboard.push(text); } } },
     history: { pushState(a, b, url) { location.pathname = url; }, replaceState(a, b, url) { location.pathname = url; } },
@@ -62,8 +65,9 @@ export async function browser({
       return jsonResponse({});
     },
     alert: text => alerts.push(text), confirm: text => { confirmations.push(text); return confirm; },
-    URLSearchParams, AbortController, console, setInterval() {}, clearInterval() {}, setTimeout, clearTimeout,
-    EventSource: class { constructor(url) { this.url = url; this.readyState = 0; } close() {} }
+    URLSearchParams, AbortController, console, setInterval() {}, clearInterval() {}, clearTimeout,
+    setTimeout: (fn, ms) => { const timer = setTimeout(fn, ms); timer.unref?.(); return timer; },
+    EventSource: class { constructor(url) { this.url = url; this.readyState = 0; streams.push(this); } close() {} }
   };
   if (caches) context.caches = caches;
   const code = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '');
@@ -71,7 +75,15 @@ export async function browser({
   const settle = async () => { for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve)); };
   await settle();
   return {
-    element, calls, alerts, confirmations, clipboard, location, settle, storage, sessionState,
-    click: async id => { await element(id).handlers.click({ target: element(id), preventDefault() {} }); await settle(); }
+    element, calls, alerts, confirmations, clipboard, location, settle, storage, sessionState, streams, navigator: context.navigator,
+    click: async id => { await element(id).handlers.click({ target: element(id), preventDefault() {} }); await settle(); },
+    // clique delegado no document (botões gerados com data-action)
+    clickAction: async (dataset, extra = {}) => {
+      const button = { dataset, getAttribute: k => extra[k] ?? null, setAttribute(k, v) { extra[k] = v; }, closest: () => null, focus() {} };
+      const target = { closest: sel => (sel === '[data-action]' ? button : null) };
+      for (const fn of documentHandlers.click || []) await fn({ target, preventDefault() {} });
+      await settle();
+      return extra;
+    }
   };
 }

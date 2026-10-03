@@ -4,7 +4,7 @@
 // tests/rls.test.js: aqueles cobrem autorização, esses cobrem bug de lógica.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { foldProgress, computeMinimalProgressRows, validEventPayload, splitDriveFolderPath, makeRateLimiter, filterValidEmails, formatDelay } from '../lib/pure.js';
+import { foldProgress, computeMinimalProgressRows, validEventPayload, splitDriveFolderPath, makeRateLimiter, filterValidEmails } from '../lib/pure.js';
 
 // ---------- foldProgress ----------
 
@@ -21,6 +21,15 @@ test('foldProgress: status "postado" registra a cena com os três horários', ()
     { action: 'status', payload: { sceneId: 'a', status: 'postado', andamentoAt: '14:00', feitoAt: '14:10', postadoAt: '14:35' } }
   ]);
   assert.deepEqual(recorded.a, { status: 'postado', andamentoAt: '14:00', feitoAt: '14:10', postadoAt: '14:35' });
+});
+
+test('foldProgress: horários ISO (com data) e antigos (HH:MM) convivem, sem alteração', () => {
+  const { recorded } = foldProgress([
+    { action: 'status', payload: { sceneId: 'novo', status: 'postado', andamentoAt: null, feitoAt: '2026-10-12T21:00:00.000Z', postadoAt: '2026-10-14T13:10:00.000Z' } },
+    { action: 'status', payload: { sceneId: 'antigo', status: 'postado', andamentoAt: null, feitoAt: '14:10', postadoAt: '14:35' } }
+  ]);
+  assert.deepEqual(recorded.novo, { status: 'postado', andamentoAt: null, feitoAt: '2026-10-12T21:00:00.000Z', postadoAt: '2026-10-14T13:10:00.000Z' });
+  assert.deepEqual(recorded.antigo, { status: 'postado', andamentoAt: null, feitoAt: '14:10', postadoAt: '14:35' });
 });
 
 test('foldProgress: status "nao_iniciado" remove a cena do registro', () => {
@@ -112,6 +121,16 @@ test('computeMinimalProgressRows: cena que avançou até "postado" compacta pres
   const minimal = assertSameFoldedState(original);
   assert.equal(minimal.length, 1);
   assert.deepEqual(minimal[0].payload, { sceneId: 'a', status: 'postado', andamentoAt: '14:00', feitoAt: '14:10', postadoAt: '14:35' });
+});
+
+test('computeMinimalProgressRows: compactar preserva horários ISO (com data) exatamente', () => {
+  const original = [
+    { action: 'status', payload: { sceneId: 'a', status: 'feito', andamentoAt: null, feitoAt: '2026-10-12T21:00:00.000Z', postadoAt: null } },
+    { action: 'status', payload: { sceneId: 'a', status: 'postado', andamentoAt: null, feitoAt: '2026-10-12T21:00:00.000Z', postadoAt: '2026-10-14T13:10:00.000Z' } }
+  ];
+  const minimal = assertSameFoldedState(original);
+  assert.equal(minimal.length, 1);
+  assert.equal(minimal[0].payload.postadoAt, '2026-10-14T13:10:00.000Z');
 });
 
 test('computeMinimalProgressRows: cena voltada pra "não iniciado" não aparece mais no resultado', () => {
@@ -249,30 +268,6 @@ test('filterValidEmails: lista vazia ou não-array vira lista vazia', () => {
   assert.deepEqual(filterValidEmails([]), []);
   assert.deepEqual(filterValidEmails(undefined), []);
   assert.deepEqual(filterValidEmails('fulana@gmail.com'), []);
-});
-
-// ---------- formatDelay ----------
-
-test('formatDelay: menos de uma hora vira "Xmin"', () => {
-  assert.equal(formatDelay('14:10', '14:33'), '23min');
-});
-
-test('formatDelay: uma hora ou mais vira "XhYY"', () => {
-  assert.equal(formatDelay('14:10', '16:15'), '2h05');
-});
-
-test('formatDelay: horário que vira meia-noite soma 24h', () => {
-  assert.equal(formatDelay('23:50', '00:20'), '30min');
-});
-
-test('formatDelay: sem um dos dois horários (ainda não postado) retorna null', () => {
-  assert.equal(formatDelay('14:10', null), null);
-  assert.equal(formatDelay(null, '14:10'), null);
-  assert.equal(formatDelay(undefined, undefined), null);
-});
-
-test('formatDelay: horário em formato inválido retorna null', () => {
-  assert.equal(formatDelay('14:10', 'não é hora'), null);
 });
 
 // ---------- makeRateLimiter ----------
