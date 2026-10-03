@@ -44,6 +44,8 @@
   <symbol id="icon-box" viewBox="0 0 24 24"><path d="M3 8l9-5 9 5-9 5-9-5z"/><path d="M3 8v9l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="22"/></symbol>
   <symbol id="icon-signal" viewBox="0 0 24 24"><path d="M3.5 17.5a12 12 0 0 1 17 0" opacity="0.35"/><path d="M6.8 14.2a7.5 7.5 0 0 1 10.4 0" opacity="0.7"/><circle cx="12" cy="18" r="1.6"/></symbol>
   <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M12 20.2s-7.2-4.2-9.6-8.5C.9 8 2.5 5 6 5c2.1 0 3.6 1.2 4.5 2.7C11.4 6.2 12.9 5 15 5c3.5 0 5.1 3 3.6 6.7-2.4 4.3-6.6 8.5-6.6 8.5z"/></symbol>
+  <symbol id="icon-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+  <symbol id="icon-chevron-down" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
 </svg>
 
 <!-- ---------- LOADING VIEW ---------- -->
@@ -397,76 +399,73 @@
 
 <!-- ---------- APP VIEW ---------- -->
 <div id="appView" hidden>
-  <header class="topbar">
+  <header class="topbar" id="liveTopbar">
     <div class="topbar-inner">
-      <div class="brand-row">
-        <div class="brand">
-          <svg class="brand-mark" viewBox="0 0 44 44" fill="none">
-            <g fill="#ffd400" opacity="0.92">
-              <polygon points="22,22 22,4 30,9" transform="rotate(0 22 22)"/>
-              <polygon points="22,22 22,4 30,9" transform="rotate(60 22 22)"/>
-              <polygon points="22,22 22,4 30,9" transform="rotate(120 22 22)"/>
-              <polygon points="22,22 22,4 30,9" transform="rotate(180 22 22)"/>
-              <polygon points="22,22 22,4 30,9" transform="rotate(240 22 22)"/>
-              <polygon points="22,22 22,4 30,9" transform="rotate(300 22 22)"/>
-            </g>
-            <circle cx="22" cy="22" r="6.5" fill="#0a0a0b"/>
-            <circle cx="22" cy="22" r="6.5" fill="none" stroke="#ff3b4e" stroke-width="1.5"/>
-          </svg>
-          <div>
-            <div class="brand-name">CAPTURA</div>
-            <div class="brand-tag">Roteiro de cobertura ao vivo</div>
+      <div class="topbar-row">
+        <input class="event-input" id="eventTitle" type="text" maxlength="70" aria-label="Nome do evento">
+        <div class="sync-status" id="syncStatus" hidden><span class="sync-dot"></span><span id="syncStatusText"></span></div>
+        <button class="more-btn" id="moreMenuBtn" type="button" aria-expanded="false" aria-controls="moreMenu">
+          <svg class="icon" aria-hidden="true"><use href="#icon-more"/></svg><span>Mais</span>
+        </button>
+        <div class="more-menu" id="moreMenu" hidden>
+          <div class="more-menu-backdrop" data-menu-close></div>
+          <div class="more-menu-panel" role="group" aria-label="Mais ações do evento">
+            <div class="event-link-row" id="eventLinkRow" hidden>
+              <span class="event-label" id="eventLinkLabel">Link do evento</span>
+              <div class="event-link-box">
+                <input class="event-link-input" id="eventLinkInput" type="text" readonly aria-label="Link do evento">
+                <button class="btn" id="copyLinkBtn" type="button">Copiar</button>
+              </div>
+              <span class="event-link-hint" id="eventLinkHint"></span>
+            </div>
+            <a class="menu-item" id="calendarLinkBtn" href="#" target="_blank" rel="noopener" hidden>Adicionar ao Google Calendar</a>
+            <a class="menu-item" id="driveFolderLinkBtn" href="#" target="_blank" rel="noopener" hidden>Abrir pasta no Drive</a>
+            <button class="menu-item" id="goToNotesBtn" type="button">Observações</button>
+            <button class="menu-item" id="exportReportBtn" type="button">Relatório</button>
+            <a class="menu-item" id="editEventLink" href="#" hidden>Editar evento</a>
+            <button class="menu-item" id="saveEventBtn" type="button" hidden>Salvar nos meus eventos</button>
+            <button class="menu-item" id="manageMembersBtn" type="button" hidden>Gerenciar equipe</button>
+            <button class="menu-item menu-item--danger" id="resetBtn" type="button">Reiniciar checklist</button>
           </div>
         </div>
-        <div class="topbar-actions">
-          <div class="sync-status" id="syncStatus" hidden><span class="sync-dot"></span><span id="syncStatusText"></span></div>
-          <a class="reset-btn" id="editEventLink" href="#" hidden>✎ Editar evento</a>
-          <button class="reset-btn" id="saveEventBtn" type="button" hidden>💾 Salvar nos meus eventos</button>
-          <button class="reset-btn" id="manageMembersBtn" type="button" hidden>👥 Gerenciar equipe</button>
-          <button class="reset-btn" id="goToNotesBtn" type="button">📝 Observações</button>
-          <button class="reset-btn" id="exportReportBtn" type="button">📄 Relatório</button>
-          <button class="reset-btn" id="resetBtn" type="button">↺ Reiniciar checklist</button>
-        </div>
       </div>
 
-      <div class="event-title-row">
-        <input class="event-input" id="eventTitle" type="text" maxlength="70" aria-label="Nome do evento">
-        <div class="event-sub" id="eventSub"></div>
-      </div>
-
-      <div class="event-link-row" id="eventLinkRow" hidden>
-        <span class="event-label" id="eventLinkLabel">Link do evento (compartilhe com a equipe)</span>
-        <div class="event-link-box">
-          <input class="event-link-input" id="eventLinkInput" type="text" readonly aria-label="Link do evento">
-          <button class="btn" id="copyLinkBtn" type="button">Copiar</button>
-          <a class="btn" id="calendarLinkBtn" href="#" target="_blank" rel="noopener" hidden>📅 Google Calendar</a>
-          <a class="btn" id="driveFolderLinkBtn" href="#" target="_blank" rel="noopener" hidden>📁 Pasta no Drive</a>
-        </div>
-        <span class="event-link-hint" id="eventLinkHint"></span>
-      </div>
-
-      <section class="publish-summary" id="publishSummary" role="status" aria-live="polite" hidden>
-        <div class="publish-summary-head">
-          <strong>Equipe deste evento</strong>
-          <button class="icon-btn" id="publishSummaryClose" type="button" aria-label="Fechar resumo">✕</button>
-        </div>
-        <ul id="publishSummaryList"></ul>
-        <button class="btn" id="retryInvitesBtn" type="button" hidden>Reenviar convites que falharam</button>
-      </section>
-
-      <div class="progress-wrap" role="region" aria-live="polite">
-        <div class="progress-meta">
-          <span class="progress-count"><b id="doneCount">0</b> / <span id="totalCount">0</span> cenas capturadas</span>
-          <span class="progress-pct" id="progressPct">0%</span>
-        </div>
+      <div class="progress-wrap" role="region" aria-label="Progresso" aria-live="polite">
         <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <span class="progress-count"><b id="doneCount">0</b>/<span id="totalCount">0</span> cenas · <span class="progress-pct" id="progressPct">0%</span></span>
       </div>
 
-      <nav class="phase-nav" id="phaseNav" aria-label="Ir para seção"></nav>
+      <div class="topbar-nav-row">
+        <nav class="phase-nav" id="phaseNav" aria-label="Ir para fase"></nav>
+        <button class="filter-btn" id="pendingFilterBtn" type="button" aria-pressed="false">Só pendentes</button>
+      </div>
     </div>
   </header>
 
   <main id="main">
+    <div class="event-context">
+      <div class="event-sub" id="eventSub"></div>
+      <button class="notes-preview" id="notesPreview" type="button" hidden>
+        <span class="notes-preview-label">Observações</span>
+        <span class="notes-preview-text" id="notesPreviewText"></span>
+      </button>
+      <section class="publish-summary" id="publishSummary" role="status" aria-live="polite" hidden>
+        <div class="publish-summary-head">
+          <strong id="publishSummaryTitle">Equipe deste evento</strong>
+          <button class="icon-btn" id="publishSummaryClose" type="button" aria-label="Fechar resumo">✕</button>
+        </div>
+        <div class="publish-share" id="publishShare" hidden>
+          <label class="event-label" for="publishShareInput">Envie este link pra equipe</label>
+          <div class="event-link-box">
+            <input class="event-link-input" id="publishShareInput" type="text" readonly>
+            <button class="btn" id="publishShareCopy" type="button">Copiar</button>
+          </div>
+        </div>
+        <ul id="publishSummaryList"></ul>
+        <button class="btn" id="retryInvitesBtn" type="button" hidden>Reenviar convites que falharam</button>
+      </section>
+    </div>
+    <p class="pending-empty" id="pendingEmpty" hidden>Nada pendente. Todas as cenas foram capturadas.</p>
     <div id="phasesContainer"></div>
 
     <section class="notes-section" id="notesSection">
@@ -490,6 +489,10 @@
   </main>
 
   <footer>CAPTURA · roteiro gerado automaticamente a partir do texto colado</footer>
+
+  <button class="next-scene-btn" id="nextSceneBtn" type="button" aria-label="Ir para a próxima cena pendente" hidden>
+    <span>Próxima</span><svg class="icon" aria-hidden="true"><use href="#icon-chevron-down"/></svg>
+  </button>
 
   <div class="completion-banner" id="completionBanner">
     <div class="completion-badge"><svg class="icon"><use href="#icon-check"/></svg></div>

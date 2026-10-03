@@ -7,6 +7,7 @@ import { webcrypto } from 'node:crypto';
 import { mergeGeneratedRoteiro, hasRoteiro } from '../public/roteiro-draft.js';
 import { diffEventDrafts, draftToText } from '../public/event-diff.js';
 import { nowStamp, formatStamp, formatStampFull, formatDelay, isLegacyStamp } from '../public/progress-time.js';
+import { isPendingStatus, countPending, nextPendingId } from '../public/checklist-nav.js';
 
 export const VALID_CONFIG = { supabaseUrl: 'https://captura-test.supabase.co', supabaseAnonKey: 'anon-test-key' };
 
@@ -23,13 +24,21 @@ export async function browser({
 } = {}) {
   const elements = new Map(), calls = [], alerts = [], confirmations = [], clipboard = [], streams = [], documentHandlers = {};
   function element(id) {
-    if (!elements.has(id)) elements.set(id, {
-      id, value: '', hidden: false, disabled: false, checked: false, readOnly: false, innerHTML: '', textContent: '', style: {}, dataset: {}, handlers: {},
-      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+    if (!elements.has(id)) {
+      const classes = new Set();
+      elements.set(id, {
+      id, value: '', hidden: false, disabled: false, checked: false, readOnly: false, innerHTML: '', textContent: '', style: {}, dataset: {}, handlers: {}, attrs: {},
+      classList: {
+        add: (...c) => c.forEach(x => classes.add(x)), remove: (...c) => c.forEach(x => classes.delete(x)),
+        toggle(c, force) { const on = force === undefined ? !classes.has(c) : !!force; if (on) classes.add(c); else classes.delete(c); return on; },
+        contains: c => classes.has(c)
+      },
       addEventListener(type, fn) { this.handlers[type] = fn; },
-      querySelectorAll() { return []; }, setAttribute() {}, removeAttribute() {}, focus() {}, replaceChildren() {}, select() {}, scrollIntoView() {},
+      setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k] ?? null; }, removeAttribute(k) { delete this.attrs[k]; },
+      querySelectorAll() { return []; }, focus() {}, replaceChildren() {}, select() {}, scrollIntoView() {},
       showModal() { this.open = true; }, close() { this.open = false; }
-    });
+      });
+    }
     return elements.get(id);
   }
   const storage = new Map(Object.entries(initialStorage));
@@ -40,6 +49,7 @@ export async function browser({
     mergeGeneratedRoteiro: (existing, result) => mergeGeneratedRoteiro(existing, result, () => webcrypto.randomUUID()),
     hasRoteiro, diffEventDrafts, draftToText,
     nowStamp, formatStamp, formatStampFull, formatDelay, isLegacyStamp,
+    isPendingStatus, countPending, nextPendingId,
     document: { getElementById: element, querySelectorAll: () => [], querySelector: () => null, addEventListener(type, fn) { (documentHandlers[type] ||= []).push(fn); }, activeElement: null, visibilityState: 'visible' },
     window: { location, addEventListener() {}, scrollTo() {} },
     navigator: { onLine: online, clipboard: { writeText: async text => { clipboard.push(text); } } },
@@ -78,12 +88,16 @@ export async function browser({
     element, calls, alerts, confirmations, clipboard, location, settle, storage, sessionState, streams, navigator: context.navigator,
     click: async id => { await element(id).handlers.click({ target: element(id), preventDefault() {} }); await settle(); },
     // clique delegado no document (botões gerados com data-action)
-    clickAction: async (dataset, extra = {}) => {
+    clickAction: async (dataset, extra = {}, selector = '[data-action]') => {
       const button = { dataset, getAttribute: k => extra[k] ?? null, setAttribute(k, v) { extra[k] = v; }, closest: () => null, focus() {} };
-      const target = { closest: sel => (sel === '[data-action]' ? button : null) };
+      const target = { closest: sel => (sel === selector ? button : null) };
       for (const fn of documentHandlers.click || []) await fn({ target, preventDefault() {} });
       await settle();
       return extra;
+    },
+    documentEvent: async (type, event) => {
+      for (const fn of documentHandlers[type] || []) await fn(event);
+      await settle();
     }
   };
 }

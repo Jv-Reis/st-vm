@@ -1,6 +1,7 @@
 import { mergeGeneratedRoteiro, hasRoteiro } from './roteiro-draft.js';
 import { diffEventDrafts, draftToText } from './event-diff.js';
 import { nowStamp, formatStamp, formatStampFull, formatDelay, isLegacyStamp } from './progress-time.js';
+import { isPendingStatus, countPending, nextPendingId } from './checklist-nav.js';
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
@@ -833,6 +834,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       history.pushState({}, '', '/e/' + id);
       showEventLink(id);
       renderPublishSummary(result.members, { canRetry: wasOwnerSave });
+      if(!wasEditing) showPublishShare();
     } catch(err){
       alert('Não consegui salvar (' + (err.message || 'erro desconhecido') + ').');
     } finally {
@@ -877,23 +879,29 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const speechHTML = item.speech
       ? '<div class="speech-box"><span class="speech-label">Frase / texto sugerido</span><p class="speech-text">'+escapeHTML(item.speech)+'</p></div>'
       : '';
+    // Em campo o que importa primeiro é marcar e saber o que capturar; fala
+    // e pode/não pode ficam a um toque.
+    const detailsLabel = item.speech && rulesHTML ? 'Fala sugerida e regras'
+      : (item.speech ? 'Fala sugerida' : 'Regras: pode e não pode');
+    const detailsHTML = (speechHTML || rulesHTML)
+      ? '<details class="card-details"><summary>'+detailsLabel+'</summary>'+
+          '<div class="card-details-body">'+speechHTML+(rulesHTML ? '<div class="rules-grid">'+rulesHTML+'</div>' : '')+'</div>'+
+        '</details>'
+      : '';
+    const meta = 'Cena '+orderStr+'/'+String(CONTENT.length).padStart(2,'0')+(item.formato ? ' · '+escapeHTML(item.formato) : '');
     return (
       '<article class="card" id="card-'+item.id+'" data-id="'+item.id+'">'+
         '<span class="vf-corner tl"></span><span class="vf-corner tr"></span>'+
         '<span class="vf-corner bl"></span><span class="vf-corner br"></span>'+
         '<span class="captured-stamp" id="stamp-'+item.id+'">CAPTURADO</span>'+
-        '<div class="card-top">'+
-          '<div class="card-icon-wrap"><div class="card-icon">'+icon(item.icon)+'</div></div>'+
+        '<div class="card-head">'+
+          '<div class="card-icon">'+icon(item.icon)+'</div>'+
+          '<div class="card-head-text">'+
+            '<h3 class="card-title" id="card-title-'+item.id+'" tabindex="-1">'+escapeHTML(item.title)+'</h3>'+
+            '<p class="card-meta">'+meta+'</p>'+
+          '</div>'+
           '<div class="status-indicator"><span class="dot"></span><span class="check">'+icon('check')+'</span></div>'+
         '</div>'+
-        '<h3 class="card-title">'+escapeHTML(item.title)+'</h3>'+
-        '<div class="time-row">'+
-          '<div class="time-box"><span class="time-label">Cena</span><span class="time-value">'+orderStr+' / '+String(CONTENT.length).padStart(2,'0')+'</span></div>'+
-          '<div class="time-box deadline"><span class="time-label">Formato</span><span class="time-value">'+escapeHTML(item.formato)+'</span></div>'+
-        '</div>'+
-        (captureItems ? '<ul class="capture-list">'+captureItems+'</ul>' : '')+
-        speechHTML+
-        (rulesHTML ? '<div class="rules-grid">'+rulesHTML+'</div>' : '')+
         '<div class="status-btn-group" data-id="'+item.id+'">'+
           '<button class="status-btn active" type="button" data-status="nao_iniciado" data-id="'+item.id+'">Não iniciado</button>'+
           '<button class="status-btn" type="button" data-status="andamento" data-id="'+item.id+'">Em andamento</button>'+
@@ -901,6 +909,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
           '<button class="status-btn" type="button" data-status="postado" data-id="'+item.id+'">Postado</button>'+
         '</div>'+
         '<div class="status-times" id="times-'+item.id+'"></div>'+
+        (captureItems ? '<ul class="capture-list">'+captureItems+'</ul>' : '')+
+        detailsHTML+
       '</article>'
     );
   }
@@ -934,15 +944,20 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     Object.keys(missionsDone).forEach(k => delete missionsDone[k]);
 
     document.getElementById('eventTitle').value = data.event_title || 'Evento sem nome';
-    document.getElementById('eventSub').textContent = CONTENT.length + ' cenas · ' + PHASES.length + ' fases — roteiro gerado a partir do texto colado';
     currentEventDate = data.event_date || '';
     currentEventEndDate = data.event_end_date || '';
     currentEventLocation = data.event_location || '';
+    const subParts = [formatEventWhen(currentEventDate), currentEventLocation.trim()].filter(Boolean);
+    document.getElementById('eventSub').textContent = subParts.length
+      ? subParts.join(' · ')
+      : pluralize(CONTENT.length, 'cena', 'cenas') + ' em ' + pluralize(PHASES.length, 'fase', 'fases');
     notesBox.value = data.notes || '';
     notesStatus.textContent = '';
+    updateNotesPreview();
 
     render();
     renderMissions();
+    pendingOnly = readPendingOnly();
 
     if(data.progress){
       Object.entries(data.progress.recorded || {}).forEach(([sceneId, entry]) => applyStatus(sceneId, entry));
@@ -953,6 +968,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     updateMissions();
     hidePublishSummary();
     applyReadOnlyState();
+    applyPendingFilter();
+    closeMoreMenu(false);
 
     showView('app');
   }
@@ -1099,7 +1116,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function setSaveButtonState(saved, canEdit){
     eventSaved = saved;
     currentMemberCanEdit = saved && !!canEdit;
-    saveEventBtn.textContent = saved ? '✓ Salvo (clique pra remover)' : '💾 Salvar nos meus eventos';
+    saveEventBtn.textContent = saved ? 'Remover dos meus eventos' : 'Salvar nos meus eventos';
     updateEditLinkVisibility();
     refreshNotesEditability();
   }
@@ -1145,6 +1162,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   notesBox.addEventListener('input', function(){
+    updateNotesPreview();
     notesDirty = true;
     notesStatus.textContent = 'Salvando…';
     clearTimeout(notesSaveTimer);
@@ -1295,10 +1313,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   });
 
-  goToNotesBtn.addEventListener('click', function(){
-    document.getElementById('notesSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if(!notesBox.readOnly) setTimeout(() => notesBox.focus(), 400);
-  });
+  goToNotesBtn.addEventListener('click', goToNotes);
 
   membersList.addEventListener('change', async function(e){
     const select = e.target.closest('select[data-user-id]');
@@ -1436,6 +1451,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     currentEventEndDate = '';
     currentEventLocation = '';
     notesBox.value = '';
+    updateNotesPreview();
     notesStatus.textContent = '';
     clearTimeout(notesSaveTimer);
     notesDirty = false;
@@ -1694,7 +1710,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       // não sobrescreve se a pessoa estiver digitando ali agora, ou se já tem uma
       // edição local pendente de salvar — a atualização dela mesma vai chegar
       // (e prevalecer) quando o debounce/retry dela salvar
-      if(document.activeElement !== notesBox && !notesDirty) notesBox.value = payload.notes;
+      if(document.activeElement !== notesBox && !notesDirty){ notesBox.value = payload.notes; updateNotesPreview(); }
     }
   }
 
@@ -1732,7 +1748,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         Object.entries(data.progress.recorded || {}).forEach(([sceneId, entry]) => applyStatus(sceneId, entry));
         Object.entries(data.progress.missionsDone || {}).forEach(([missionKey, done]) => { if(done) applyMissionKey(missionKey, true); });
       }
-      if(document.activeElement !== notesBox && !notesDirty) notesBox.value = data.notes || '';
+      if(document.activeElement !== notesBox && !notesDirty){ notesBox.value = data.notes || ''; updateNotesPreview(); }
       if(reconnect && data.id){
         showEventLink(data.id);
         refreshSaveButton();
@@ -2113,9 +2129,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
           '<div class="phase-header">'+
             '<div class="phase-icon">'+icon(phase.icon)+'</div>'+
             '<div class="phase-titles">'+
-              '<div class="phase-eyebrow">Momento do evento</div>'+
-              '<div class="phase-name">'+escapeHTML(phase.label)+'</div>'+
+              '<h2 class="phase-name" id="phase-title-'+phase.key+'" tabindex="-1">'+escapeHTML(phase.label)+'</h2>'+
             '</div>'+
+            '<span class="phase-done-badge">Concluída</span>'+
             '<div class="phase-count" id="phasecount-'+phase.key+'">0 / '+items.length+'</div>'+
           '</div>'+
           '<div class="cards-grid">'+ items.map(cardHTML).join('') +'</div>'+
@@ -2127,9 +2143,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         '</a>';
     });
 
-    container.innerHTML = CONTENT.length ? mainHTML : '<div class="history-empty">Este evento ainda não tem roteiro — volte aqui assim que a equipe adicionar.</div>';
+    container.innerHTML = CONTENT.length ? mainHTML : '<div class="history-empty">Este evento ainda não tem roteiro. Volte aqui assim que a equipe adicionar.</div>';
     nav.innerHTML = navHTML;
     document.getElementById('totalCount').textContent = CONTENT.length;
+    observePhases();
   }
 
   function renderMissions(){
@@ -2182,6 +2199,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     });
 
     checkCompletion(doneCount, total);
+    updateNextSceneButton();
   }
 
   function updateMissions(){
@@ -2220,6 +2238,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       card.classList.toggle('is-progress', status === 'andamento');
       card.classList.toggle('is-done', status === 'feito');
       card.classList.toggle('is-posted', status === 'postado');
+      // com "só pendentes", uma cena que voltou a ficar pendente reaparece na hora
+      if(isPendingStatus(status) && card.classList.contains('is-filtered')) unfilterCard(card, id);
       card.querySelectorAll('.status-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.status === (status || 'nao_iniciado'));
       });
@@ -2293,8 +2313,13 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const phasePill = e.target.closest('.phase-pill');
     if(phasePill){
       e.preventDefault();
-      const target = document.getElementById(phasePill.getAttribute('href').slice(1));
-      if(target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const key = phasePill.getAttribute('href').slice(1);
+      const target = document.getElementById(key);
+      if(target) target.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
+      // o foco acompanha a rolagem (leitor de tela e teclado continuam dali)
+      const heading = document.getElementById('phase-title-'+key);
+      if(heading) heading.focus({ preventScroll: true });
+      setCurrentPhasePill(key);
       return;
     }
 
@@ -2367,6 +2392,197 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       return;
     }
   });
+
+  // ---------- checklist ao vivo: topo fixo, menu "Mais", filtro e próxima ----------
+  // Em campo, no celular e com uma mão: o topo fica fixo e curto (título,
+  // sincronização, progresso, fases), o resto das ações vai pro menu "Mais"
+  // e o botão "Próxima" fica na área do polegar.
+
+  const liveTopbar = document.getElementById('liveTopbar');
+  const moreMenuBtn = document.getElementById('moreMenuBtn');
+  const moreMenu = document.getElementById('moreMenu');
+  const pendingFilterBtn = document.getElementById('pendingFilterBtn');
+  const nextSceneBtn = document.getElementById('nextSceneBtn');
+  const notesPreview = document.getElementById('notesPreview');
+  const PENDING_ONLY_PREFIX = 'captura_pending_only:';
+  let pendingOnly = false;
+  let phaseObserver = null;
+
+  function prefersReducedMotion(){
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  function scrollBehavior(){ return prefersReducedMotion() ? 'auto' : 'smooth'; }
+
+  // Altura real do topo fixo, pra rolagens pararem logo abaixo dele.
+  if(typeof ResizeObserver !== 'undefined'){
+    new ResizeObserver(function(){
+      if(liveTopbar.offsetHeight) document.documentElement.style.setProperty('--topbar-h', liveTopbar.offsetHeight + 'px');
+    }).observe(liveTopbar);
+  }
+
+  // Menu "Mais": folha que sobe de baixo no celular, menu suspenso no desktop.
+  function openMoreMenu(){
+    moreMenu.hidden = false;
+    moreMenuBtn.setAttribute('aria-expanded', 'true');
+    const first = Array.from(moreMenu.querySelectorAll('#copyLinkBtn, .menu-item'))
+      .find(el => !el.hidden && el.getClientRects && el.getClientRects().length);
+    if(first) first.focus();
+  }
+
+  function closeMoreMenu(returnFocus){
+    if(moreMenu.hidden) return;
+    moreMenu.hidden = true;
+    moreMenuBtn.setAttribute('aria-expanded', 'false');
+    if(returnFocus) moreMenuBtn.focus();
+  }
+
+  moreMenuBtn.addEventListener('click', function(){
+    if(moreMenu.hidden) openMoreMenu(); else closeMoreMenu(true);
+  });
+
+  // Escolher uma ação fecha o menu; "Copiar" fica aberto pra mostrar o "Copiado!".
+  moreMenu.addEventListener('click', function(e){
+    if(e.target.closest('[data-menu-close]')){ closeMoreMenu(true); return; }
+    if(e.target.closest('.menu-item')) closeMoreMenu(false);
+  });
+
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && !moreMenu.hidden) closeMoreMenu(true);
+  });
+
+  document.addEventListener('click', function(e){
+    if(moreMenu.hidden || !e.target.closest) return;
+    if(e.target.closest('#moreMenu') || e.target.closest('#moreMenuBtn')) return;
+    closeMoreMenu(false);
+  });
+
+  // Observações à vista no começo da página (antes ficavam só no fim).
+  function updateNotesPreview(){
+    const text = (notesBox.value || '').trim().replace(/\s+/g, ' ');
+    notesPreview.hidden = !text;
+    document.getElementById('notesPreviewText').textContent = text;
+  }
+
+  function goToNotes(){
+    document.getElementById('notesSection').scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
+    if(!notesBox.readOnly) setTimeout(() => notesBox.focus({ preventScroll: true }), prefersReducedMotion() ? 0 : 400);
+  }
+
+  notesPreview.addEventListener('click', goToNotes);
+
+  // "Só pendentes": lembrado por evento neste aparelho.
+  function pendingOnlyKey(){ return PENDING_ONLY_PREFIX + window.location.pathname; }
+
+  function readPendingOnly(){
+    try { return localStorage.getItem(pendingOnlyKey()) === '1'; } catch(err){ return false; }
+  }
+
+  function writePendingOnly(){
+    try {
+      if(pendingOnly) localStorage.setItem(pendingOnlyKey(), '1');
+      else localStorage.removeItem(pendingOnlyKey());
+    } catch(err){}
+  }
+
+  function sceneStatus(id){ return recorded[id] ? recorded[id].status : null; }
+
+  function renderedSceneIds(){
+    return CONTENT.filter(c => document.getElementById('card-'+c.id)).map(c => c.id);
+  }
+
+  // O filtro vale no instante em que é aplicado: cena marcada depois fica à
+  // vista (esmaecida) até a próxima aplicação, pra não sumir debaixo do dedo
+  // por causa de um toque errado.
+  function applyPendingFilter(){
+    appView.classList.toggle('pending-only', pendingOnly);
+    pendingFilterBtn.setAttribute('aria-pressed', String(pendingOnly));
+    CONTENT.forEach(item => {
+      const card = document.getElementById('card-'+item.id);
+      if(card) card.classList.toggle('is-filtered', pendingOnly && !isPendingStatus(sceneStatus(item.id)));
+    });
+    PHASES.forEach(phase => {
+      const section = document.getElementById(phase.key);
+      if(!section) return;
+      const ids = CONTENT.filter(c => c.phase === phase.key).map(c => c.id);
+      section.classList.toggle('is-complete', pendingOnly && ids.length > 0 && countPending(ids, sceneStatus) === 0);
+    });
+    const ids = renderedSceneIds();
+    document.getElementById('pendingEmpty').hidden = !(pendingOnly && ids.length && countPending(ids, sceneStatus) === 0);
+  }
+
+  function unfilterCard(card, id){
+    card.classList.remove('is-filtered');
+    const item = CONTENT.find(c => String(c.id) === String(id));
+    const section = item && document.getElementById(item.phase);
+    if(section) section.classList.remove('is-complete');
+    document.getElementById('pendingEmpty').hidden = true;
+  }
+
+  pendingFilterBtn.addEventListener('click', function(){
+    pendingOnly = !pendingOnly;
+    writePendingOnly();
+    applyPendingFilter();
+  });
+
+  // "Próxima": a próxima cena pendente depois da que está no topo da tela.
+  function updateNextSceneButton(){
+    const ids = renderedSceneIds();
+    nextSceneBtn.hidden = !ids.length || countPending(ids, sceneStatus) === 0;
+  }
+
+  function currentSceneId(){
+    const top = liveTopbar.getBoundingClientRect ? liveTopbar.getBoundingClientRect().bottom : 0;
+    for(const id of renderedSceneIds()){
+      const card = document.getElementById('card-'+id);
+      if(card.classList.contains('is-filtered') || !card.getBoundingClientRect) continue;
+      if(card.getBoundingClientRect().bottom > top + 8) return id;
+    }
+    return null;
+  }
+
+  function goToScene(id){
+    const card = document.getElementById('card-'+id);
+    if(!card) return;
+    card.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
+    const title = document.getElementById('card-title-'+id);
+    if(title) title.focus({ preventScroll: true });
+    card.classList.remove('is-highlight');
+    void card.offsetWidth;
+    card.classList.add('is-highlight');
+    setTimeout(() => card.classList.remove('is-highlight'), 1600);
+  }
+
+  nextSceneBtn.addEventListener('click', function(){
+    // é aqui que as cenas marcadas com o filtro ligado saem de vista
+    if(pendingOnly) applyPendingFilter();
+    const target = nextPendingId(renderedSceneIds(), sceneStatus, currentSceneId());
+    if(target !== null) goToScene(target);
+  });
+
+  // Fase atual acende na barra de fases conforme a rolagem.
+  function setCurrentPhasePill(key){
+    document.querySelectorAll('.phase-pill').forEach(pill => {
+      const on = pill.id === 'pill-'+key;
+      pill.classList.toggle('is-current', on);
+      if(on) pill.setAttribute('aria-current', 'true'); else pill.removeAttribute('aria-current');
+    });
+    const pill = document.getElementById('pill-'+key);
+    const nav = document.getElementById('phaseNav');
+    if(pill && nav.scrollTo) nav.scrollTo({ left: Math.max(0, pill.offsetLeft - 16), behavior: scrollBehavior() });
+  }
+
+  function observePhases(){
+    if(phaseObserver) phaseObserver.disconnect();
+    if(typeof IntersectionObserver === 'undefined') return;
+    const top = (liveTopbar.offsetHeight || 150) + 8;
+    phaseObserver = new IntersectionObserver(function(entries){
+      const visible = entries.filter(en => en.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if(visible.length) setCurrentPhasePill(visible[0].target.id);
+    }, { rootMargin: '-' + top + 'px 0px -55% 0px' });
+    document.querySelectorAll('#phasesContainer .phase').forEach(section => phaseObserver.observe(section));
+  }
 
   function tickClock(){
     const now = new Date();
@@ -2602,7 +2818,22 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     publishSummary.hidden = true;
     publishSummaryList.innerHTML = '';
     retryInvitesBtn.hidden = true;
+    document.getElementById('publishShare').hidden = true;
+    document.getElementById('publishSummaryTitle').textContent = 'Equipe deste evento';
   }
+
+  // Logo depois de publicar, o link vem junto com o resumo da equipe; depois
+  // disso ele mora no menu "Mais".
+  function showPublishShare(){
+    document.getElementById('publishShareInput').value = document.getElementById('eventLinkInput').value;
+    document.getElementById('publishShare').hidden = false;
+    document.getElementById('publishSummaryTitle').textContent = 'Evento publicado';
+    publishSummary.hidden = false;
+  }
+
+  document.getElementById('publishShareCopy').addEventListener('click', function(){
+    copyInputValue(document.getElementById('publishShareInput'), this);
+  });
 
   function summaryItems(summary){
     const items = [];
