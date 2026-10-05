@@ -14,7 +14,7 @@ if('serviceWorker' in navigator){
     chat: 'Conversa', flag: 'Marco', film: 'Filme', box: 'Detalhes', signal: 'Transmissão', heart: 'Momento especial'
   };
 
-  const EXAMPLE_ROTEIRO = `Evento: Ana & Bruno — Espaço Villa Verde, casamento com cerimônia e festa.
+  const EXAMPLE_ROTEIRO = `Evento: Ana & Bruno, Espaço Villa Verde, casamento com cerimônia e festa.
 
 Chegada: mostrar a noiva chegando no espaço, descendo do carro, ajeitando o vestido, reação da equipe. Se ela soltar alguma piada nervosa, aproveita. Frase pra usar: "Gente, já são 14h e eu ainda nem me arrumei direito" rs. Pode captar a correria real dela. Não pode pedir pra repetir a entrada. Formato: story ao vivo.
 
@@ -32,6 +32,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const appView = document.getElementById('appView');
   const loginView = document.getElementById('loginView');
   const historyView = document.getElementById('historyView');
+  const accountView = document.getElementById('accountView');
   const roteiroInput = document.getElementById('roteiroInput');
   const generateBtn = document.getElementById('generateBtn');
   const exampleBtn = document.getElementById('exampleBtn');
@@ -99,7 +100,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let roteiroSource = null;
   let activeGeneration = null;
 
-  const VIEWS = { loading: loadingView, initError: initErrorView, access: accessView, import: importView, preview: previewView, login: loginView, history: historyView, app: appView, report: reportView, members: membersView };
+  const VIEWS = { loading: loadingView, initError: initErrorView, access: accessView, import: importView, preview: previewView, login: loginView, history: historyView, account: accountView, app: appView, report: reportView, members: membersView };
   function showView(name){
     if(name !== 'import' && activeGeneration) {
       activeGeneration.abort();
@@ -108,7 +109,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(name === 'import') updateImportContext();
     Object.keys(VIEWS).forEach(key => { VIEWS[key].hidden = key !== name; });
     authStrip.hidden = (name === 'report' || name === 'loading' || name === 'initError');
-    authStrip.classList.toggle('auth-strip--static', name === 'app');
     window.scrollTo(0, 0);
   }
 
@@ -309,7 +309,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(!currentUser){
       localStorage.setItem(PENDING_ROTEIRO_KEY, JSON.stringify({ text, draft: roteiroSource, editingEventId, editing: editingSnapshot() }));
       showView('login');
-      loginStatus.textContent = 'Faça login pra gerar o checklist — seu roteiro fica salvo e a geração continua assim que você entrar.';
+      loginStatus.textContent = 'Faça login pra gerar o checklist. Seu roteiro fica salvo e a geração continua assim que você entrar.';
       loginStatus.hidden = false;
       return;
     }
@@ -422,9 +422,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
                 '</span>'+
               '</button>'+
               '<div class="preview-scene-actions">'+
-                '<button type="button" class="icon-btn" aria-label="Mover cena para cima" data-action="move-scene-up" data-idx="'+i+'" '+(localIdx===0?'disabled':'')+'>↑</button>'+
-                '<button type="button" class="icon-btn" aria-label="Mover cena para baixo" data-action="move-scene-down" data-idx="'+i+'" '+(localIdx===scenesInPhase.length-1?'disabled':'')+'>↓</button>'+
-                '<button type="button" class="icon-btn danger" aria-label="Remover cena" data-action="remove-scene" data-idx="'+i+'">✕</button>'+
+                '<button type="button" class="icon-btn" aria-label="Mover cena para cima" data-action="move-scene-up" data-idx="'+i+'" '+(localIdx===0?'disabled':'')+'>'+icon('arrow-up')+'</button>'+
+                '<button type="button" class="icon-btn" aria-label="Mover cena para baixo" data-action="move-scene-down" data-idx="'+i+'" '+(localIdx===scenesInPhase.length-1?'disabled':'')+'>'+icon('arrow-down')+'</button>'+
+                '<button type="button" class="icon-btn danger" aria-label="Remover cena" data-action="remove-scene" data-idx="'+i+'">'+icon('x')+'</button>'+
               '</div>'+
             '</div>'+
             '<div class="preview-scene-body" id="scene-body-'+i+'"'+(open?'':' hidden')+'>'+
@@ -452,9 +452,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
           '<div class="preview-phase-head">'+
             '<div class="field-row"><label class="field-label" for="edit-phase-'+pIdx+'-label">Fase</label><input id="edit-phase-'+pIdx+'-label" class="field-input" data-scope="phase" data-idx="'+pIdx+'" data-field="label" value="'+escapeAttr(phase.label)+'"></div>'+
             '<div class="preview-phase-actions">'+
-              '<button type="button" class="icon-btn" aria-label="Mover fase para cima" data-action="move-phase-up" data-idx="'+pIdx+'" '+(pIdx===0?'disabled':'')+'>↑</button>'+
-              '<button type="button" class="icon-btn" aria-label="Mover fase para baixo" data-action="move-phase-down" data-idx="'+pIdx+'" '+(pIdx===draft.phases.length-1?'disabled':'')+'>↓</button>'+
-              '<button type="button" class="icon-btn danger" aria-label="Remover fase" data-action="remove-phase" data-idx="'+pIdx+'">✕</button>'+
+              '<button type="button" class="icon-btn" aria-label="Mover fase para cima" data-action="move-phase-up" data-idx="'+pIdx+'" '+(pIdx===0?'disabled':'')+'>'+icon('arrow-up')+'</button>'+
+              '<button type="button" class="icon-btn" aria-label="Mover fase para baixo" data-action="move-phase-down" data-idx="'+pIdx+'" '+(pIdx===draft.phases.length-1?'disabled':'')+'>'+icon('arrow-down')+'</button>'+
+              '<button type="button" class="icon-btn danger" aria-label="Remover fase" data-action="remove-phase" data-idx="'+pIdx+'">'+icon('x')+'</button>'+
             '</div>'+
           '</div>'+
           '<div class="preview-phase-icon">'+iconPicker('phase', pIdx, phase.icon, 'edit-phase-'+pIdx+'-icon', 'Ícone da fase')+'</div>'+
@@ -490,6 +490,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     sectionRoteiro.open = hasRoteiro(draft);
     sectionTeam.open = false;
     sectionGoogle.open = false;
+    refreshPreviewGoogleStatus();
   }
 
   function sceneMeta(localIdx, s){
@@ -604,7 +605,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       '<div class="preview-mission-block">'+
         '<div class="preview-scene-top">'+
           '<span class="field-label" style="margin:0;">Categoria</span>'+
-          '<button type="button" class="icon-btn danger" aria-label="Remover categoria de missão" data-action="remove-mission-cat" data-idx="'+cIdx+'">✕</button>'+
+          '<button type="button" class="icon-btn danger" aria-label="Remover categoria de missão" data-action="remove-mission-cat" data-idx="'+cIdx+'">'+icon('x')+'</button>'+
         '</div>'+
         '<div class="field-grid field-row">'+
           '<div><label class="field-label" for="edit-missionCat-'+cIdx+'-label">Nome</label><input id="edit-missionCat-'+cIdx+'-label" class="field-input" data-scope="missionCat" data-idx="'+cIdx+'" data-field="label" value="'+escapeAttr(cat.label)+'"></div>'+
@@ -711,15 +712,19 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(draft) draft.notes = e.target.value;
   });
 
+  function driveButtonLabel(isUpdate){
+    return isUpdate ? icon('refresh')+'Adicionar pastas novas ao Drive' : icon('folder')+'Criar estrutura no Google Drive';
+  }
+
   function renderDriveFolderAction(){
     if(draft.drive_folder_id){
       driveFolderAction.innerHTML =
-        '<div class="import-actions" style="margin-top:0;">'+
-          '<a class="btn" href="https://drive.google.com/drive/folders/'+encodeURIComponent(draft.drive_folder_id)+'" target="_blank" rel="noopener">📁 Abrir pasta no Drive</a>'+
-          '<button class="btn" id="updateDriveFolderBtn" type="button">🔄 Adicionar pastas novas ao Drive</button>'+
+        '<div class="import-actions import-actions--flush">'+
+          '<a class="btn" href="https://drive.google.com/drive/folders/'+encodeURIComponent(draft.drive_folder_id)+'" target="_blank" rel="noopener">'+icon('folder')+'Abrir pasta no Drive</a>'+
+          '<button class="btn" id="updateDriveFolderBtn" type="button">'+driveButtonLabel(true)+'</button>'+
         '</div>';
     } else {
-      driveFolderAction.innerHTML = '<button class="btn" id="createDriveFolderBtn" type="button">📁 Criar estrutura no Google Drive</button>';
+      driveFolderAction.innerHTML = '<button class="btn" id="createDriveFolderBtn" type="button">'+driveButtonLabel(false)+'</button>';
     }
     updateSectionSummaries();
   }
@@ -735,7 +740,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     // que uma linha tenha sido apagada da caixa de texto.
     const isUpdate = !!draft.drive_folder_id;
     const btnId = isUpdate ? 'updateDriveFolderBtn' : 'createDriveFolderBtn';
-    const idleLabel = isUpdate ? '🔄 Adicionar pastas novas ao Drive' : '📁 Criar estrutura no Google Drive';
     const btn = document.getElementById(btnId);
     if(btn){ btn.disabled = true; btn.textContent = isUpdate ? 'Atualizando…' : 'Criando…'; }
     try {
@@ -750,10 +754,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       if(!resp.ok) throw new Error(result.error || 'Erro ao ' + (isUpdate ? 'atualizar' : 'criar') + ' a estrutura.');
       draft.drive_folder_id = result.folderId;
       renderDriveFolderAction();
-      if(isUpdate) alert('Estrutura atualizada — pastas novas foram criadas no Drive. Nada existente foi removido ou duplicado.');
+      if(isUpdate) alert('Estrutura atualizada: pastas novas foram criadas no Drive. Nada existente foi removido ou duplicado.');
     } catch(err){
       alert('Não consegui ' + (isUpdate ? 'atualizar' : 'criar') + ' a estrutura (' + (err.message || 'erro desconhecido') + ').');
-      if(btn){ btn.disabled = false; btn.textContent = idleLabel; }
+      if(btn){ btn.disabled = false; btn.innerHTML = driveButtonLabel(isUpdate); }
     }
   }
 
@@ -783,7 +787,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(!currentUser){
       localStorage.setItem(PENDING_DRAFT_KEY, JSON.stringify({ draft, editingEventId, generatedInPreview, editing: editingSnapshot() }));
       showView('login');
-      loginStatus.textContent = 'Faça login pra publicar — seu roteiro fica salvo e volta pra revisão assim que você entrar.';
+      loginStatus.textContent = 'Faça login pra publicar. Seu roteiro fica salvo e volta pra revisão assim que você entrar.';
       loginStatus.hidden = false;
       return;
     }
@@ -943,7 +947,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     Object.keys(recorded).forEach(k => delete recorded[k]);
     Object.keys(missionsDone).forEach(k => delete missionsDone[k]);
 
-    document.getElementById('eventTitle').value = data.event_title || 'Evento sem nome';
+    document.getElementById('eventTitle').textContent = data.event_title || 'Evento sem nome';
     currentEventDate = data.event_date || '';
     currentEventEndDate = data.event_end_date || '';
     currentEventLocation = data.event_location || '';
@@ -986,9 +990,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     appView.classList.toggle('is-readonly', readOnly);
     document.querySelectorAll('.status-btn, .mission-chip').forEach(btn => { btn.disabled = readOnly; });
     document.getElementById('resetBtn').hidden = readOnly || !canReset();
-    const sub = document.getElementById('eventSub');
-    const base = sub.textContent.replace(/ · somente visualização$/, '');
-    sub.textContent = readOnly ? base + ' · somente visualização' : base;
+    document.getElementById('readonlyNotice').hidden = !readOnly;
   }
 
   function setAccess(next){
@@ -1077,7 +1079,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     refreshManageMembersButton();
     refreshNotesEditability();
 
-    const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').value, currentEventDate, currentEventEndDate, currentEventLocation, link);
+    const calUrl = buildGoogleCalendarUrl(document.getElementById('eventTitle').textContent, currentEventDate, currentEventEndDate, currentEventLocation, link);
     if(calUrl){
       calendarLinkBtn.href = calUrl;
       calendarLinkBtn.hidden = false;
@@ -1138,7 +1140,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const token = keepalive ? cachedAccessToken : await accessToken();
     if(!token){
       notesDirty = true;
-      notesStatus.textContent = 'Não salvou (sessão expirada) — faça login de novo';
+      notesStatus.textContent = 'Não salvou (sessão expirada). Faça login de novo.';
       return;
     }
     try {
@@ -1157,7 +1159,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       setTimeout(() => { if(notesStatus.textContent === 'Salvo') notesStatus.textContent = ''; }, 2000);
     } catch(err){
       notesDirty = true;
-      notesStatus.textContent = 'Não salvou — tenta de novo quando a conexão voltar';
+      notesStatus.textContent = 'Não salvou. Tenta de novo quando a conexão voltar.';
     }
   }
 
@@ -1300,7 +1302,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         invited: 'Convite enviado por email.',
         added: 'Adicionado à equipe.',
         existing: 'Essa pessoa já está na equipe.',
-        pending: 'Convite registrado — o envio termina em instantes.',
+        pending: 'Convite registrado. O envio termina em instantes.',
         failed: 'Não foi possível convidar: ' + (result.error || 'erro no envio') + ' Você pode reenviar mais abaixo.'
       };
       addMemberStatus.textContent = messages[result.status] || 'Pedido registrado.';
@@ -1397,30 +1399,65 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     } catch(err){ calendarPermissionStatus.textContent = err.message || 'Não foi possível revogar.'; button.disabled = false; }
   });
 
+  // Estado da conexão com o Google: botão e textos de "Minha conta" e a
+  // linha de estado na seção Google da tela de edição.
+  async function fetchGoogleStatus(){
+    const token = await accessToken();
+    if(!token) return null;
+    const resp = await fetch('/api/google/status', { headers: { Authorization: 'Bearer ' + token } });
+    const result = await resp.json();
+    if(!resp.ok) throw new Error();
+    return result;
+  }
+
+  function renderGoogleConnectButton(){
+    googleCalendarConnectBtn.innerHTML = googleCalendarConnected
+      ? icon('x')+'Desconectar Google'
+      : icon('link')+'Conectar Google';
+  }
+
   async function refreshGoogleCalendarButton(){
+    const status = document.getElementById('googleAccountStatus');
     if(!currentUser){
       googleCalendarConnectBtn.hidden = true;
       googleTestingNote.hidden = true;
       return;
     }
     try {
-      const token = await accessToken();
-      if(!token){ googleCalendarConnectBtn.hidden = true; googleTestingNote.hidden = true; return; }
-      const resp = await fetch('/api/google/status', { headers: { Authorization: 'Bearer ' + token } });
-      const result = await resp.json();
-      if(!resp.ok) throw new Error();
+      const result = await fetchGoogleStatus();
+      if(!result){ googleCalendarConnectBtn.hidden = true; googleTestingNote.hidden = true; return; }
       googleCalendarConnected = !!result.connected;
       googleCalendarConnectBtn.hidden = false;
-      googleCalendarConnectBtn.textContent = googleCalendarConnected
-        ? '📅 Google conectado (desconectar)'
-        : '🔗 Conectar Google (Calendar + Drive)';
-      // só mostra o aviso de "peça acesso" pra quem ainda não conectou —
+      renderGoogleConnectButton();
+      status.textContent = googleCalendarConnected
+        ? 'Conectado' + (result.email ? ' como ' + result.email : '') + '.'
+        : 'Não conectado.';
+      status.classList.toggle('is-on', googleCalendarConnected);
+      // só mostra o aviso de "app não verificado" pra quem ainda não conectou:
       // depois de conectado, já deu certo, não faz sentido continuar avisando
       googleTestingNote.hidden = googleCalendarConnected;
     } catch(err){
       googleCalendarConnectBtn.hidden = true;
       googleTestingNote.hidden = true;
+      status.textContent = 'Não foi possível verificar a conexão com o Google.';
     }
+  }
+
+  // Na tela de edição, a seção Google diz se a conexão existe (convites e
+  // pastas dependem dela). O link abre "Minha conta" em outra aba pra não
+  // perder o rascunho.
+  async function refreshPreviewGoogleStatus(){
+    const el = document.getElementById('previewGoogleStatus');
+    if(!currentUser){ el.hidden = true; return; }
+    try {
+      const result = await fetchGoogleStatus();
+      if(!result){ el.hidden = true; return; }
+      el.classList.toggle('is-on', !!result.connected);
+      el.innerHTML = result.connected
+        ? 'Google conectado' + (result.email ? ' como ' + escapeHTML(result.email) : '') + '. Convites e pastas funcionam.'
+        : 'Google não conectado: convites da agenda e pastas do Drive precisam da conexão. <a href="/conta" target="_blank" rel="noopener">Conectar em Minha conta</a>';
+      el.hidden = false;
+    } catch(err){ el.hidden = true; }
   }
 
   googleCalendarConnectBtn.addEventListener('click', async function(){
@@ -1433,7 +1470,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         const resp = await fetch('/api/google/disconnect', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
         if(!resp.ok) throw new Error('Erro ao desconectar.');
         googleCalendarConnected = false;
-        googleCalendarConnectBtn.textContent = '🔗 Conectar Google (Calendar + Drive)';
+        refreshGoogleCalendarButton();
       } else {
         const resp = await fetch('/api/google/connect', { headers: { Authorization: 'Bearer ' + token } });
         const result = await resp.json();
@@ -1946,6 +1983,34 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
+  // Volta do Google (OAuth) com ?google=conectado.
+  function announceGoogleConnected(path){
+    if(new URLSearchParams(window.location.search).get('google') !== 'conectado') return;
+    history.replaceState({}, '', path);
+    alert('Google conectado! A partir de agora, seus eventos com data sincronizam automaticamente com o Calendar, e você já pode criar estruturas de pastas no Drive.');
+  }
+
+  // "Minha conta": conexão com o Google, quem pode adicionar eventos à
+  // agenda e sair. Abre pelo email na barra de cima.
+  async function showAccountView(){
+    if(!currentUser){
+      localStorage.setItem(RETURN_TO_KEY, '/conta');
+      showView('login');
+      loginStatus.textContent = 'Faça login pra ver sua conta.';
+      loginStatus.hidden = false;
+      return;
+    }
+    document.getElementById('accountEmail').textContent = currentUser.email || '';
+    calendarPermissionStatus.textContent = '';
+    showView('account');
+    announceGoogleConnected('/conta');
+    await Promise.all([refreshGoogleCalendarButton(), refreshCalendarPermissions()]);
+  }
+
+  document.getElementById('accountLogoutBtn').addEventListener('click', function(){
+    authStripLogoutBtn.click();
+  });
+
   async function showHistoryView(){
     if(!currentUser){
       showView('login');
@@ -1962,10 +2027,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     refreshGoogleCalendarButton();
     calendarPermissionStatus.textContent = '';
     const permissionsLoaded = refreshCalendarPermissions();
-    if(new URLSearchParams(window.location.search).get('google') === 'conectado'){
-      history.replaceState({}, '', '/historico');
-      alert('Google conectado! A partir de agora, seus eventos com data sincronizam automaticamente com o Calendar, e você já pode criar estruturas de pastas no Drive.');
-    }
+    announceGoogleConnected('/historico');
     try {
       await loadHistoryEvents();
     } finally {
@@ -2020,7 +2082,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(!ev) return;
     const isOwnerDelete = btn.dataset.action === 'delete-event';
     const confirmMsg = isOwnerDelete
-      ? 'Excluir "' + ev.event_title + '" permanentemente? Isso apaga o evento e todo o progresso registrado — não pode ser desfeito.'
+      ? 'Excluir "' + ev.event_title + '" permanentemente? Isso apaga o evento e todo o progresso registrado e não pode ser desfeito.'
       : 'Remover "' + ev.event_title + '" da sua lista? Dá pra salvar de novo depois, se ainda tiver o link.';
     if(!confirm(confirmMsg)) return;
 
@@ -2116,9 +2178,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
     historyList.innerHTML =
       '<div class="cal-nav">'+
-        '<button class="btn" type="button" id="calPrevBtn">← Mês anterior</button>'+
+        '<button class="btn" type="button" id="calPrevBtn">'+icon('arrow-left')+'Mês anterior</button>'+
         '<span class="cal-nav-label">'+firstOfMonth.toLocaleDateString('pt-BR', { month:'long', year:'numeric' })+'</span>'+
-        '<button class="btn" type="button" id="calNextBtn">Próximo mês →</button>'+
+        '<button class="btn" type="button" id="calNextBtn">Próximo mês'+icon('arrow-right')+'</button>'+
       '</div>'+
       '<div class="cal-grid">'+cellsHTML+'</div>'+
       noDateHTML;
@@ -2208,7 +2270,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
     document.getElementById('doneCount').textContent = doneCount;
     document.getElementById('progressPct').textContent = pct+'%';
-    document.getElementById('progressFill').style.width = pct+'%';
+    document.getElementById('progressFill').style.transform = 'scaleX(' + (pct / 100) + ')';
 
     PHASES.forEach(phase=>{
       const items = CONTENT.filter(c=>c.phase===phase.key);
@@ -2237,7 +2299,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function checkCompletion(doneCount, total){
     const banner = document.getElementById('completionBanner');
     if(total>0 && doneCount>0 && doneCount===total){
-      const eventName = document.getElementById('eventTitle').value || 'o evento';
+      const eventName = document.getElementById('eventTitle').textContent || 'o evento';
       document.getElementById('completionSub').textContent = 'Todas as '+total+' cenas de "'+eventName+'" foram capturadas.';
       banner.classList.add('visible');
     } else {
@@ -2617,7 +2679,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   // ---------- relatório pós-evento ----------
 
   function generateReport(){
-    const eventTitle = document.getElementById('eventTitle').value || 'Evento';
+    const eventTitle = document.getElementById('eventTitle').textContent || 'Evento';
     const total = CONTENT.length;
     const doneCount = CONTENT.filter(c => isDone(c.id)).length;
     const pct = total ? Math.round((doneCount/total)*100) : 0;
@@ -2632,20 +2694,20 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       if(!items.length) return '';
       const rows = items.map(item => {
         const entry = recorded[item.id];
-        const status = entry ? statusLabel[entry.status] || '—' : 'Não iniciado';
+        const status = entry ? statusLabel[entry.status] || '-' : 'Não iniciado';
         const delay = entry ? formatDelay(entry.feitoAt, entry.postadoAt) : null;
         // registro de antes da data ser guardada: mostra o horário, mas não chuta a demora
         const delayLegacy = !delay && entry && entry.feitoAt && entry.postadoAt && (isLegacyStamp(entry.feitoAt) || isLegacyStamp(entry.postadoAt));
         return (
           '<tr>'+
-            '<td class="report-status">'+(entry && (entry.status === 'feito' || entry.status === 'postado') ? '✓' : '—')+'</td>'+
+            '<td class="report-status">'+(entry && (entry.status === 'feito' || entry.status === 'postado') ? '✓' : '-')+'</td>'+
             '<td>'+escapeHTML(item.title)+'</td>'+
             '<td class="report-muted">'+escapeHTML(item.formato)+'</td>'+
             '<td class="report-muted">'+escapeHTML(status)+'</td>'+
-            '<td class="report-muted">'+(entry && entry.andamentoAt ? escapeHTML(formatStampFull(entry.andamentoAt)) : '—')+'</td>'+
-            '<td class="report-muted">'+(entry && entry.feitoAt ? escapeHTML(formatStampFull(entry.feitoAt)) : '—')+'</td>'+
-            '<td class="report-muted">'+(entry && entry.postadoAt ? escapeHTML(formatStampFull(entry.postadoAt)) : '—')+'</td>'+
-            '<td class="report-muted"'+(delayLegacy ? ' title="Registrado sem data: a demora não pode ser calculada"' : '')+'>'+(delay ? escapeHTML(delay) : '—')+'</td>'+
+            '<td class="report-muted">'+(entry && entry.andamentoAt ? escapeHTML(formatStampFull(entry.andamentoAt)) : '-')+'</td>'+
+            '<td class="report-muted">'+(entry && entry.feitoAt ? escapeHTML(formatStampFull(entry.feitoAt)) : '-')+'</td>'+
+            '<td class="report-muted">'+(entry && entry.postadoAt ? escapeHTML(formatStampFull(entry.postadoAt)) : '-')+'</td>'+
+            '<td class="report-muted"'+(delayLegacy ? ' title="Registrado sem data: a demora não pode ser calculada"' : '')+'>'+(delay ? escapeHTML(delay) : '-')+'</td>'+
           '</tr>'
         );
       }).join('');
@@ -2660,7 +2722,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       MISSIONS.map(cat => {
         const rows = cat.items.map((item) => {
           const done = !!missionsDone[cat.key + '-' + item.key];
-          return '<tr><td class="report-status">'+(done ? '✓' : '—')+'</td><td>'+escapeHTML(item.text)+'</td></tr>';
+          return '<tr><td class="report-status">'+(done ? '✓' : '-')+'</td><td>'+escapeHTML(item.text)+'</td></tr>';
         }).join('');
         return '<p class="report-cat-label">'+escapeHTML(cat.emoji||'')+' '+escapeHTML(cat.label)+'</p><table class="report-table"><tbody>'+rows+'</tbody></table>';
       }).join('')
@@ -3026,7 +3088,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       if(hasLink) document.getElementById('shareLinkInput').value = window.location.origin + editingShare.share_path;
       if(editingShare.legacy_active){
         legacy.hidden = false;
-        legacy.textContent = 'O endereço antigo (' + window.location.origin + '/e/' + editingEventId + ') ainda abre sem conta até ' + formatDateBR(editingShare.legacy_link_until) + '. Mudar o modo, gerar um link novo ou desativar o link encerra o endereço antigo na hora — envie o link novo pra equipe.';
+        legacy.textContent = 'O endereço antigo (' + window.location.origin + '/e/' + editingEventId + ') ainda abre sem conta até ' + formatDateBR(editingShare.legacy_link_until) + '. Mudar o modo, gerar um link novo ou desativar o link encerra o endereço antigo na hora. Envie o link novo pra equipe.';
       }
       if(mode !== editingShare.share_mode) hint.push('A mudança vale ao salvar. Quem estiver com o evento aberto pelo link é reconectado.');
     } else {
@@ -3083,7 +3145,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   document.getElementById('shareRegenerateBtn').addEventListener('click', function(){
-    shareRequest('POST', '/regenerate', 'Gerar um link novo? O link atual (e o endereço antigo, se ainda valer) param de funcionar na hora — quem estiver com ele aberto perde o acesso.');
+    shareRequest('POST', '/regenerate', 'Gerar um link novo? O link atual (e o endereço antigo, se ainda valer) param de funcionar na hora, e quem estiver com ele aberto perde o acesso.');
   });
   document.getElementById('shareDisableBtn').addEventListener('click', function(){
     shareRequest('DELETE', '', 'Desativar o link? Ele para de funcionar na hora e só a equipe, com conta, abre o evento.');
@@ -3133,7 +3195,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       ? '<table><thead><tr><th scope="col">Campo</th><th scope="col">Sua versão</th><th scope="col">Versão atual</th></tr></thead><tbody>'+
         changes.map(c => '<tr><th scope="row">'+escapeHTML(c.label)+'</th><td>'+escapeHTML(c.local)+'</td><td>'+escapeHTML(c.remote)+'</td></tr>').join('')+
         '</tbody></table>'
-      : '<p>Os campos do roteiro são iguais nas duas versões — a outra pessoa pode ter mudado só a versão salva. Recarregue e salve de novo.</p>';
+      : '<p>Os campos do roteiro são iguais nas duas versões. A outra pessoa pode ter mudado só a versão salva. Recarregue e salve de novo.</p>';
     conflictDiff.hidden = false;
   });
 
@@ -3185,7 +3247,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const target = localStorage.getItem(RETURN_TO_KEY);
     if(!currentUser || !target) return false;
     localStorage.removeItem(RETURN_TO_KEY);
-    if(!/^\/(e|s)\/[A-Za-z0-9_-]+(\/editar)?$/.test(target)) return false;
+    if(!/^\/(e|s)\/[A-Za-z0-9_-]+(\/editar)?$/.test(target) && target !== '/conta') return false;
     history.replaceState({}, '', target);
     route();
     return true;
@@ -3334,6 +3396,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     let m;
     if((m = path.match(/^\/e\/([a-zA-Z0-9-]+)\/editar$/))){ loadEventForEdit(m[1]); return; }
     if(path === '/historico'){ showHistoryView(); return; }
+    if(path === '/conta'){ showAccountView(); return; }
     if((m = path.match(/^\/e\/([a-zA-Z0-9-]+)$/))){ loadEventFromUrl(m[1]); return; }
     if((m = path.match(/^\/s\/([A-Za-z0-9_-]+)$/))){ loadEventFromShare(m[1]); return; }
     roteiroSource = null;
@@ -3386,7 +3449,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     offlineWithEvents: 'Sem conexão com a internet. Você pode abrir os eventos que já abriu neste aparelho, ou tentar de novo quando a conexão voltar.',
     network: 'Não foi possível falar com o servidor. Verifique a conexão e toque em "Tentar novamente".',
     server: 'O servidor do CAPTURA não respondeu corretamente. Tente novamente em alguns instantes.',
-    config: 'O servidor respondeu com uma configuração incompleta. Isso não é problema da sua conexão — avise quem administra o CAPTURA.',
+    config: 'O servidor respondeu com uma configuração incompleta. Isso não é problema da sua conexão. Avise quem administra o CAPTURA.',
     library: 'Não foi possível carregar os arquivos do app. Verifique a conexão e toque em "Tentar novamente".',
     timeout: 'O CAPTURA demorou demais pra abrir. Verifique a conexão e toque em "Tentar novamente".'
   };

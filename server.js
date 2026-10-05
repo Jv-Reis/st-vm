@@ -363,7 +363,9 @@ app.get('/api/google/connect', requireAuth, (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !supabaseAdmin) {
     return res.status(500).json({ error: 'Integração com Google Calendar não configurada no servidor.' });
   }
-  const returnTo = /^\/e\/[a-zA-Z0-9-]+$/.test(req.query.returnTo || '') ? req.query.returnTo : '/historico';
+  // volta pra "Minha conta" (onde fica a conexão com o Google) por padrão
+  const asked = req.query.returnTo || '';
+  const returnTo = /^\/e\/[a-zA-Z0-9-]+$/.test(asked) || asked === '/historico' || asked === '/conta' ? asked : '/conta';
   const state = signState({ uid: req.user.id, returnTo, exp: Date.now() + 10 * 60 * 1000 });
   const url = googleOAuthClient(req).generateAuthUrl({
     access_type: 'offline',
@@ -1352,6 +1354,7 @@ app.get('/e/:id', sendIndex);
 app.get('/e/:id/editar', sendIndex);
 app.get('/s/:token', sendIndex);
 app.get('/historico', sendIndex);
+app.get('/conta', sendIndex);
 
 // Rede de segurança pra erro que escapou de todo try/catch das rotas acima
 // (as rotas já tratam seus próprios erros e nunca chegam a chamar next(err),

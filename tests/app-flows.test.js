@@ -40,7 +40,7 @@ test('offline sem configuração: tela de erro com eventos salvos, nunca "Carreg
   await b.settle();
   assert.equal(b.location.pathname, '/s/' + TOKEN);
   assert.equal(b.element('appView').hidden, false, 'abre o evento salvo mesmo sem o cliente de login');
-  assert.equal(b.element('eventTitle').value, 'Casamento Ana');
+  assert.equal(b.element('eventTitle').textContent, 'Casamento Ana');
 });
 
 test('primeiro acesso offline explica que precisa de internet e "Tentar novamente" recupera', async () => {
@@ -110,7 +110,7 @@ test('link para visualizar: somente leitura, sem enviar progresso', async () => 
       ? jsonResponse(eventData({ access: { role: null, basis: 'link', can_write_progress: false, share_mode: 'view' } })) : null
   });
   assert.equal(b.element('appView').hidden, false);
-  assert.match(b.element('eventSub').textContent, /somente visualização/);
+  assert.equal(b.element('readonlyNotice').hidden, false, 'aviso visível de somente visualização');
   assert.equal(b.element('resetBtn').hidden, true);
   assert.equal(b.calls.some(c => /progress/.test(c.url) && c.method === 'POST'), false);
 });

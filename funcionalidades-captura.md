@@ -157,7 +157,7 @@ Funciona **sem internet** para eventos já abertos uma vez com internet naquele 
 
 ## 7. Integrações com o Google (opcionais)
 
-Conecta-se uma vez em "Meus eventos". Permissões pedidas: `calendar.events` e `drive.file`. O `drive.file` só dá acesso ao que o próprio CAPTURA cria.
+Conecta-se uma vez em **"Minha conta"** (toque no seu email no topo da página). Permissões pedidas: `calendar.events` e `drive.file`. O `drive.file` só dá acesso ao que o próprio CAPTURA cria.
 
 ### Google Calendar
 - **Botão manual "Adicionar ao Google Calendar":** abre a agenda já preenchida com título, data, local e link do checklist. **Não precisa conectar o Google.** A cópia salva assim não é atualizada depois.
@@ -181,6 +181,7 @@ Conecta-se uma vez em "Meus eventos". Permissões pedidas: `calendar.events` e `
   - **link mágico por email**, sem senha.
 - **Quem precisa de conta:** quem cria ou edita.
 - **Quem não precisa:** quem só usa um link de colaborar ou de visualizar.
+- **Minha conta** (toque no seu email no topo): conectar ou desconectar o Google, escolher quem pode adicionar eventos à sua agenda e sair da conta.
 - **Usa:** Supabase Auth.
 
 ---

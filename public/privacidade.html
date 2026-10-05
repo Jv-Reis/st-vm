@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Política de Privacidade — CAPTURA</title>
+<title>Política de Privacidade · CAPTURA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -24,19 +24,19 @@
 </head>
 <body>
 <div class="policy-wrap">
-  <a class="btn policy-back" href="/">← Voltar pro CAPTURA</a>
+  <a class="btn policy-back" href="/"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Voltar pro CAPTURA</a>
   <h1>Política de Privacidade do CAPTURA</h1>
-  <p class="policy-updated">Última atualização: 25 de setembro de 2026</p>
+  <p class="policy-updated">Última atualização: 5 de outubro de 2026</p>
 
   <p>O CAPTURA é uma ferramenta de checklist de cobertura de eventos (casamentos, festas e afins). Esta página explica quais dados coletamos, pra que usamos, e como você pode controlá-los.</p>
 
   <h2>Quais dados coletamos</h2>
   <ul>
-    <li><strong>Email</strong> — quando você cria conta (login por link mágico ou por "Entrar com Google"), guardamos seu email pra identificar sua conta.</li>
-    <li><strong>Conteúdo que você cria</strong> — o roteiro que você cola, e o checklist gerado a partir dele (fases, cenas, textos, nome/data/local do evento).</li>
-    <li><strong>Progresso do evento</strong> — quais cenas foram marcadas como "em andamento"/"feito" e quando, pra sincronizar isso ao vivo entre a equipe.</li>
-    <li><strong>Convites para a equipe</strong> — quando o dono de um evento adiciona alguém pelo email, guardamos esse email, a situação do convite (pendente, enviado, adicionado ou com falha), o número de tentativas e quem pediu, pra mostrar o resultado e reenviar só o que falhou.</li>
-    <li><strong>Conexão com Google Calendar e Drive (opcional)</strong> — só se você conectar essa integração, guardamos um token de acesso pra criar eventos na sua agenda e pastas no seu Drive em seu nome. Nunca lemos ou acessamos arquivos que o CAPTURA não criou.</li>
+    <li><strong>Email</strong>: quando você cria conta (login por link mágico ou por "Entrar com Google"), guardamos seu email pra identificar sua conta.</li>
+    <li><strong>Conteúdo que você cria</strong>: o roteiro que você cola, e o checklist gerado a partir dele (fases, cenas, textos, nome/data/local do evento).</li>
+    <li><strong>Progresso do evento</strong>: quais cenas foram marcadas como "em andamento"/"feito" e quando, pra sincronizar isso ao vivo entre a equipe.</li>
+    <li><strong>Convites para a equipe</strong>: quando o dono de um evento adiciona alguém pelo email, guardamos esse email, a situação do convite (pendente, enviado, adicionado ou com falha), o número de tentativas e quem pediu, pra mostrar o resultado e reenviar só o que falhou.</li>
+    <li><strong>Conexão com Google Calendar e Drive (opcional)</strong>: só se você conectar essa integração, guardamos um token de acesso pra criar eventos na sua agenda e pastas no seu Drive em seu nome. Nunca lemos ou acessamos arquivos que o CAPTURA não criou.</li>
   </ul>
 
   <h2>Como usamos esses dados</h2>
@@ -49,22 +49,22 @@
   <p>Quando o dono adiciona um email que ainda não tem conta, o Supabase envia um convite para esse endereço em nome do CAPTURA. Se o envio falhar por um problema temporário, tentamos de novo automaticamente algumas vezes; depois disso, o dono vê a falha e decide se reenvia. Guardamos só uma mensagem de erro resumida, nunca o conteúdo do email. Excluir o evento apaga esses registros.</p>
 
   <h2>Eventos de pessoas autorizadas</h2>
-  <p>Você pode autorizar individualmente organizadores em “Meus eventos”. Com sua conta Google conectada, o CAPTURA cria e atualiza cópias dos eventos em que você é membro, inclusive eventos existentes. Remover você da equipe, retirar a data ou excluir o evento remove a cópia enquanto a autorização e a conexão estiverem ativas. Revogar uma pessoa interrompe a sincronização; os eventos já criados permanecem na agenda. Desconectar o Google pausa a sincronização; reconectar a retoma para as pessoas ainda autorizadas. Guardamos essas autorizações, referências dos eventos e uma fila de sincronização para repetir operações que falharem.</p>
+  <p>Você pode autorizar individualmente organizadores em “Minha conta” (toque no seu email no topo da página). Com sua conta Google conectada, o CAPTURA cria e atualiza cópias dos eventos em que você é membro, inclusive eventos existentes. Remover você da equipe, retirar a data ou excluir o evento remove a cópia enquanto a autorização e a conexão estiverem ativas. Revogar uma pessoa interrompe a sincronização; os eventos já criados permanecem na agenda. Desconectar o Google pausa a sincronização; reconectar a retoma para as pessoas ainda autorizadas. Guardamos essas autorizações, referências dos eventos e uma fila de sincronização para repetir operações que falharem.</p>
 
   <h2>Com quem compartilhamos</h2>
   <ul>
-    <li><strong>Supabase</strong> — hospeda nosso banco de dados, cuida do login e envia os emails de login e de convite para a equipe.</li>
-    <li><strong>Anthropic (Claude)</strong> — o texto do roteiro que você cola é enviado pra essa IA só na hora de gerar o checklist, pra organizar em fases/cenas.</li>
-    <li><strong>Google</strong> — só se você conectar Calendar/Drive, usamos a API do Google em seu nome, com sua autorização explícita.</li>
-    <li><strong>Sentry</strong> — registra erros técnicos do servidor pra gente conseguir corrigir bugs mais rápido.</li>
+    <li><strong>Supabase</strong>: hospeda nosso banco de dados, cuida do login e envia os emails de login e de convite para a equipe.</li>
+    <li><strong>Anthropic (Claude)</strong>: o texto do roteiro que você cola é enviado pra essa IA só na hora de gerar o checklist, pra organizar em fases/cenas.</li>
+    <li><strong>Google</strong>: só se você conectar Calendar/Drive, usamos a API do Google em seu nome, com sua autorização explícita.</li>
+    <li><strong>Sentry</strong>: registra erros técnicos do servidor pra gente conseguir corrigir bugs mais rápido.</li>
   </ul>
   <p>Nenhum desses serviços tem permissão pra usar seus dados fora do que é necessário pra rodar o CAPTURA.</p>
 
   <h2>Segurança e armazenamento</h2>
-  <p>Os dados ficam num banco Postgres (Supabase, região São Paulo). O acesso é controlado por regras de permissão a nível de banco (RLS) — cada evento só pode ser lido/editado por quem é dono ou foi autorizado pelo dono. Tokens de acesso ao Google ficam criptografados (AES-256-GCM) antes de salvar, nunca em texto puro.</p>
+  <p>Os dados ficam num banco Postgres (Supabase, região São Paulo). O acesso é controlado por regras de permissão a nível de banco (RLS): cada evento só pode ser lido/editado por quem é dono ou foi autorizado pelo dono. Tokens de acesso ao Google ficam criptografados (AES-256-GCM) antes de salvar, nunca em texto puro.</p>
 
   <h2>Seus direitos</h2>
-  <p>Você pode pedir acesso, correção ou exclusão dos seus dados a qualquer momento, entrando em contato pelo email abaixo — conforme a Lei Geral de Proteção de Dados (LGPD). Desconectar sua conta Google (no próprio CAPTURA ou em <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>) revoga nosso acesso à sua agenda/Drive imediatamente.</p>
+  <p>Você pode pedir acesso, correção ou exclusão dos seus dados a qualquer momento, entrando em contato pelo email abaixo, conforme a Lei Geral de Proteção de Dados (LGPD). Desconectar sua conta Google (no próprio CAPTURA ou em <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>) revoga nosso acesso à sua agenda/Drive imediatamente.</p>
 
   <h2>Cookies e armazenamento local</h2>
   <p>O CAPTURA guarda algumas preferências só no seu navegador (localStorage), como o modo de visualização do histórico, e usa cache local (service worker) pra funcionar offline. Isso não sai do seu aparelho.</p>
