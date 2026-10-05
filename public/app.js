@@ -244,14 +244,15 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function updateImportContext(){
     const continuing = !!roteiroSource;
-    document.getElementById('importContext').textContent = continuing ? 'Captura · roteiro do evento' : 'Captura · novo evento';
     document.getElementById('importTitle').textContent = continuing ? 'Roteiro de ' + roteiroSource.event_title : 'Cole o roteiro do evento';
     document.getElementById('cancelRoteiroBtn').hidden = !continuing;
-    quickCreateBtn.hidden = continuing;
+    document.getElementById('quickCreateRow').hidden = continuing;
     quickCreateBtn.disabled = !!activeGeneration;
     generateBtn.disabled = !!activeGeneration;
     exampleBtn.disabled = !!activeGeneration;
-    generateBtn.textContent = activeGeneration ? 'Gerando…' : 'Gerar checklist';
+    // quem não entrou sabe antes do clique que gerar pede login
+    generateBtn.textContent = activeGeneration ? 'Gerando…' : (currentUser ? 'Gerar checklist' : 'Entrar e gerar checklist');
+    document.getElementById('generateLoginHint').hidden = !!currentUser || !!activeGeneration;
   }
 
   document.getElementById('cancelRoteiroBtn').addEventListener('click', function(){
@@ -308,9 +309,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
     if(!currentUser){
       localStorage.setItem(PENDING_ROTEIRO_KEY, JSON.stringify({ text, draft: roteiroSource, editingEventId, editing: editingSnapshot() }));
-      showView('login');
-      loginStatus.textContent = 'Faça login pra gerar o checklist. Seu roteiro fica salvo e a geração continua assim que você entrar.';
-      loginStatus.hidden = false;
+      showLogin('generate');
       return;
     }
     await runGenerate(text);
@@ -370,7 +369,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   function updatePreviewContext(){
     const content = hasRoteiro(draft);
-    document.getElementById('previewEyebrow').textContent = editingEventId ? 'Revisão · evento existente' : 'Revisão · novo evento';
     document.getElementById('previewHeading').textContent = !content
       ? (editingEventId ? 'Atualize os dados do evento' : 'Reserve a data do evento')
       : (generatedInPreview
@@ -786,9 +784,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
     if(!currentUser){
       localStorage.setItem(PENDING_DRAFT_KEY, JSON.stringify({ draft, editingEventId, generatedInPreview, editing: editingSnapshot() }));
-      showView('login');
-      loginStatus.textContent = 'Faça login pra publicar. Seu roteiro fica salvo e volta pra revisão assim que você entrar.';
-      loginStatus.hidden = false;
+      showLogin('publish');
       return;
     }
 
@@ -1840,7 +1836,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       loginBtn.hidden = true;
     } else if(code === 'not_found'){
       title.textContent = 'Evento não encontrado';
-      message.textContent = data.error || 'O link pode estar errado ou o evento foi removido.';
+      message.textContent = 'O link pode estar incompleto ou o evento foi excluído. Confira o link com quem organiza o evento.';
       loginBtn.hidden = true;
     } else {
       title.textContent = 'Este evento é restrito à equipe';
@@ -1849,14 +1845,13 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         : 'Entre com a conta que foi adicionada à equipe, ou peça o link de compartilhamento a quem organiza o evento.';
       loginBtn.hidden = !!currentUser;
     }
+    document.getElementById('accessHistoryLink').hidden = !currentUser;
     showView('access');
   }
 
   document.getElementById('accessLoginBtn').addEventListener('click', function(){
     localStorage.setItem(RETURN_TO_KEY, window.location.pathname);
-    loginStatus.textContent = 'Entre com a conta da equipe. Depois do login você volta pra este evento.';
-    loginStatus.hidden = false;
-    showView('login');
+    showLogin('team');
   });
 
   document.getElementById('accessHomeBtn').addEventListener('click', function(){
@@ -1995,9 +1990,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   async function showAccountView(){
     if(!currentUser){
       localStorage.setItem(RETURN_TO_KEY, '/conta');
-      showView('login');
-      loginStatus.textContent = 'Faça login pra ver sua conta.';
-      loginStatus.hidden = false;
+      showLogin('account');
       return;
     }
     document.getElementById('accountEmail').textContent = currentUser.email || '';
@@ -2013,9 +2006,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   async function showHistoryView(){
     if(!currentUser){
-      showView('login');
-      loginStatus.textContent = 'Faça login pra ver seus eventos publicados.';
-      loginStatus.hidden = false;
+      showLogin('history');
       return;
     }
     // Esqueleto enquanto carrega; eventos e autorizações aparecem juntos,
@@ -3227,6 +3218,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     authStripLoggedOut.hidden = !!currentUser;
     authStripLoggedIn.hidden = !currentUser;
     if(currentUser) authStripEmail.textContent = currentUser.email || '';
+    updateImportContext();
     updateEditLinkVisibility();
     refreshSaveButton();
     refreshManageMembersButton();
@@ -3312,32 +3304,54 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     return true;
   }
 
-  authStripLoginBtn.addEventListener('click', function(){ showView('login'); });
+  const LOGIN_REASONS = {
+    generate: { title: 'Entre para gerar o checklist', note: 'Seu texto fica salvo e a geração continua assim que você entrar.' },
+    publish: { title: 'Entre para publicar', note: 'Seu roteiro fica salvo e volta pra revisão assim que você entrar.' },
+    history: { title: 'Entre para ver seus eventos', note: '' },
+    account: { title: 'Entre para ver sua conta', note: '' },
+    team: { title: 'Entre com a conta da equipe', note: 'Depois do login você volta pra este evento.' }
+  };
+
+  function showLogin(reason){
+    const r = LOGIN_REASONS[reason] || { title: 'Entrar no CAPTURA', note: '' };
+    document.getElementById('loginTitle').textContent = r.title;
+    const reasonEl = document.getElementById('loginReason');
+    reasonEl.textContent = r.note;
+    reasonEl.hidden = !r.note;
+    setLoginStatus('');
+    showView('login');
+  }
+
+  // Recado do login: vermelho só pra erro; "link enviado" é confirmação.
+  function setLoginStatus(text, kind){
+    loginStatus.textContent = text;
+    loginStatus.hidden = !text;
+    loginStatus.classList.toggle('import-error--ok', kind === 'ok');
+  }
+
+  authStripLoginBtn.addEventListener('click', function(){ showLogin(); });
 
   loginBackBtn.addEventListener('click', function(){ showView('import'); });
 
   function loginUnavailable(){
     if(sb) return false;
-    loginStatus.textContent = 'Sem conexão: entrar na conta precisa de internet. Conecte-se e recarregue a página.';
-    loginStatus.hidden = false;
+    setLoginStatus('Sem conexão: entrar na conta precisa de internet. Conecte-se e recarregue a página.');
     return true;
   }
 
   googleLoginBtn.addEventListener('click', async function(){
     if(loginUnavailable()) return;
-    loginStatus.hidden = true;
+    setLoginStatus('');
     googleLoginBtn.disabled = true;
     try {
       const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + '/' } });
       if(error){
-        loginStatus.textContent = error.message || 'Erro ao entrar com o Google.';
-        loginStatus.hidden = false;
+        setLoginStatus(error.message || 'Erro ao entrar com o Google.');
         googleLoginBtn.disabled = false;
       }
       // sem erro: o navegador já está sendo redirecionado pro Google, não precisa reabilitar o botão
     } catch(err){
-      loginStatus.textContent = err.message || 'Erro ao entrar com o Google.';
-      loginStatus.hidden = false;
+      setLoginStatus(err.message || 'Erro ao entrar com o Google.');
       googleLoginBtn.disabled = false;
     }
   });
@@ -3345,18 +3359,17 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   loginSubmitBtn.addEventListener('click', async function(){
     if(loginUnavailable()) return;
     const email = loginEmailInput.value.trim();
-    loginStatus.hidden = true;
+    setLoginStatus('');
     if(!email){
-      loginStatus.textContent = 'Digite um email válido.';
-      loginStatus.hidden = false;
+      setLoginStatus('Digite um email válido.');
       return;
     }
     loginSubmitBtn.disabled = true;
     loginSubmitBtn.textContent = 'Enviando…';
     try {
       const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin + '/' } });
-      loginStatus.textContent = error ? (error.message || 'Erro ao enviar o link.') : 'Link enviado! Confira seu email (' + email + ').';
-      loginStatus.hidden = false;
+      if(error) setLoginStatus(error.message || 'Erro ao enviar o link.');
+      else setLoginStatus('Link enviado! Confira seu email (' + email + ').', 'ok');
     } finally {
       loginSubmitBtn.disabled = false;
       loginSubmitBtn.textContent = 'Enviar link de acesso';

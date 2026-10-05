@@ -57,7 +57,7 @@ export async function browser({
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
     supabase: supabaseGlobal ? { createClient: () => ({ auth: {
       getSession: async () => ({ data: { session: sessionState.current } }),
-      onAuthStateChange() {}, signOut: async () => {}
+      onAuthStateChange() {}, signOut: async () => {}, signInWithOtp: async () => ({ error: null })
     } }) } : undefined,
     fetch: async (url, options = {}) => {
       calls.push({ url, ...options });
