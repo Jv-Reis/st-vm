@@ -1342,6 +1342,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   let googleCalendarConnected = false;
   const calendarPermissionStatus = document.getElementById('calendarPermissionStatus');
   const calendarPermissionsList = document.getElementById('calendarPermissionsList');
+  const calendarPermissionsCount = document.getElementById('calendarPermissionsCount');
+  const historyLoading = document.getElementById('historyLoading');
+  const historyContent = document.getElementById('historyContent');
   async function refreshCalendarPermissions(){
     calendarPermissionsList.replaceChildren();
     try {
@@ -1353,7 +1356,13 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         '<div class="calendar-permission-row"><span>' + escapeHTML(p.email || p.organizer_id) + '</span>' +
         '<button class="btn" type="button" data-revoke-organizer="' + escapeHTML(p.organizer_id) + '">Revogar</button></div>'
       ).join('') : '<p>Nenhuma pessoa autorizada.</p>';
-    } catch(err){ calendarPermissionStatus.textContent = err.message || 'Não foi possível carregar as autorizações.'; }
+      const n = result.permissions.length;
+      calendarPermissionsCount.textContent = n ? pluralize(n, 'pessoa autorizada', 'pessoas autorizadas') : 'Ninguém autorizado';
+      calendarPermissionsCount.classList.toggle('has-people', n > 0);
+    } catch(err){
+      calendarPermissionsCount.textContent = '';
+      calendarPermissionStatus.textContent = err.message || 'Não foi possível carregar as autorizações.';
+    }
   }
   document.getElementById('calendarPermissionForm').addEventListener('submit', async function(e){
     e.preventDefault();
@@ -1944,15 +1953,29 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       loginStatus.hidden = false;
       return;
     }
-    historyList.innerHTML = '<div class="history-empty">Carregando…</div>';
+    // Esqueleto enquanto carrega; eventos e autorizações aparecem juntos,
+    // sem a seção de agenda ocupar a tela sozinha antes da lista.
+    historyLoading.hidden = false;
+    historyContent.hidden = true;
+    historyList.innerHTML = '';
     showView('history');
     refreshGoogleCalendarButton();
     calendarPermissionStatus.textContent = '';
-    refreshCalendarPermissions();
+    const permissionsLoaded = refreshCalendarPermissions();
     if(new URLSearchParams(window.location.search).get('google') === 'conectado'){
       history.replaceState({}, '', '/historico');
       alert('Google conectado! A partir de agora, seus eventos com data sincronizam automaticamente com o Calendar, e você já pode criar estruturas de pastas no Drive.');
     }
+    try {
+      await loadHistoryEvents();
+    } finally {
+      await permissionsLoaded;
+      historyLoading.hidden = true;
+      historyContent.hidden = false;
+    }
+  }
+
+  async function loadHistoryEvents(){
     try {
       const token = await accessToken();
       const resp = await fetch('/api/events', { headers: { Authorization: 'Bearer ' + token } });

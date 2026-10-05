@@ -1,7 +1,7 @@
 // Dois caches: o do app (versionado, trocado a cada deploy) e o de dados
 // (configuração e eventos abertos), que sobrevive às atualizações do app —
 // assim atualizar o CAPTURA não apaga os eventos disponíveis offline.
-const SHELL_CACHE = 'captura-shell-v15';
+const SHELL_CACHE = 'captura-shell-v16';
 const DATA_CACHE = 'captura-data-v1';
 const APP_SHELL = [
   '/',

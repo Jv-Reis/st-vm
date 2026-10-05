@@ -328,24 +328,41 @@
     <p class="google-testing-note" id="googleTestingNote" hidden>⚠️ Ao conectar, o Google vai mostrar um aviso de "app não verificado" — é esperado (a integração ainda não passou pela verificação completa do Google). Clique em <strong>"Avançado"</strong> e depois em <strong>"Acessar captura-checklist (não seguro)"</strong> pra continuar normalmente.</p>
   </div>
   <div class="preview-view">
-    <div class="history-view-switch" id="historyViewSwitch">
-      <button class="btn view-switch-btn" data-mode="list" type="button">☰ Lista</button>
-      <button class="btn view-switch-btn" data-mode="grid" type="button">▦ Bloco</button>
-      <button class="btn view-switch-btn" data-mode="calendar" type="button">📅 Calendário</button>
+    <div class="history-loading" id="historyLoading" role="status">
+      <span class="sr-only">Carregando seus eventos…</span>
+      <div class="skeleton-row" aria-hidden="true"></div>
+      <div class="skeleton-card" aria-hidden="true"></div>
+      <div class="skeleton-card" aria-hidden="true"></div>
+      <div class="skeleton-card" aria-hidden="true"></div>
     </div>
-    <div id="historyList"></div>
-    <section class="calendar-permissions" aria-labelledby="calendarPermissionsTitle">
-      <h2 id="calendarPermissionsTitle">Quem pode adicionar eventos à minha agenda</h2>
-      <p>Conecte seu Google e autorize uma pessoa pelo email da conta dela no CAPTURA. Quando ela incluir você na equipe de um evento com data, ele entrará na sua agenda sem aceitar convite por email. Eventos já existentes também serão sincronizados.</p>
-      <p>Alterações e exclusões feitas no CAPTURA atualizam sua cópia. Revogar a autorização interrompe a sincronização e mantém os eventos que já estão na agenda.</p>
-      <form id="calendarPermissionForm">
-        <label for="calendarOrganizerEmail">Email da pessoa que organiza os eventos</label>
-        <input class="field-input" id="calendarOrganizerEmail" type="email" maxlength="254" required placeholder="pessoa@exemplo.com">
-        <button class="btn" type="submit" id="calendarAuthorizeBtn">Autorizar essa pessoa</button>
-      </form>
-      <p id="calendarPermissionStatus" role="status" aria-live="polite"></p>
-      <div id="calendarPermissionsList"></div>
-    </section>
+    <div id="historyContent" hidden>
+      <details class="calendar-permissions" id="calendarPermissionsSection">
+        <summary>
+          <span class="calendar-permissions-head">
+            <span class="calendar-permissions-title" id="calendarPermissionsTitle">Quem pode adicionar eventos à minha agenda</span>
+            <span class="calendar-permissions-hint">Deixe um organizador colocar os eventos da equipe direto no seu Google Calendar.</span>
+          </span>
+          <span class="calendar-permissions-count" id="calendarPermissionsCount"></span>
+        </summary>
+        <div class="calendar-permissions-body">
+          <p>Conecte seu Google e autorize uma pessoa pelo email da conta dela no CAPTURA. Quando ela incluir você na equipe de um evento com data, ele entrará na sua agenda sem aceitar convite por email. Eventos já existentes também serão sincronizados.</p>
+          <p>Alterações e exclusões feitas no CAPTURA atualizam sua cópia. Revogar a autorização interrompe a sincronização e mantém os eventos que já estão na agenda.</p>
+          <form id="calendarPermissionForm">
+            <label for="calendarOrganizerEmail">Email da pessoa que organiza os eventos</label>
+            <input class="field-input" id="calendarOrganizerEmail" type="email" maxlength="254" required placeholder="pessoa@exemplo.com">
+            <button class="btn" type="submit" id="calendarAuthorizeBtn">Autorizar essa pessoa</button>
+          </form>
+          <p id="calendarPermissionStatus" role="status" aria-live="polite"></p>
+          <div id="calendarPermissionsList"></div>
+        </div>
+      </details>
+      <div class="history-view-switch" id="historyViewSwitch">
+        <button class="btn view-switch-btn" data-mode="list" type="button">☰ Lista</button>
+        <button class="btn view-switch-btn" data-mode="grid" type="button">▦ Bloco</button>
+        <button class="btn view-switch-btn" data-mode="calendar" type="button">📅 Calendário</button>
+      </div>
+      <div id="historyList"></div>
+    </div>
   </div>
 </div>
 
