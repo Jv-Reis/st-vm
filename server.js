@@ -347,7 +347,7 @@ app.post('/api/parse-roteiro', rateLimit, requireAuth, generateRateLimit, async 
 // inteiro da pessoa. O código só chama o endpoint de criar pasta — nunca o
 // de upload de conteúdo — então essa permissão nunca é usada além disso.
 const GOOGLE_SCOPES = [
-  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar.events.owned',
   'https://www.googleapis.com/auth/drive.file'
 ];
 

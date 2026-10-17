@@ -8,7 +8,7 @@ Respostas com base no código atual (`lib/calendar-sync.js`, `server.js` e `publ
 
 **A sincronização é só de ida: CAPTURA → Google Calendar.** Nada volta da agenda para a CAPTURA. O app não lê eventos da agenda, não importa datas e não percebe alterações feitas no Google. Se alguém mudar o horário direto no Google Calendar, a CAPTURA não fica sabendo, e a próxima edição do evento na CAPTURA sobrescreve a mudança.
 
-Permissão pedida ao Google: `calendar.events` (criar, editar e apagar eventos). O app só chama criar (`POST`), atualizar (`PATCH`) e apagar (`DELETE`) eventos, sempre na agenda principal (`primary`).
+Permissão pedida ao Google: `calendar.events.owned` (criar, editar e apagar eventos em agendas pertencentes ao usuário). O app só chama criar (`POST`), atualizar (`PATCH`) e apagar (`DELETE`) eventos, sempre na agenda principal (`primary`), que pertence ao usuário conectado.
 
 ### O que vai para o evento no Google
 

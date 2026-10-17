@@ -157,7 +157,7 @@ Funciona **sem internet** para eventos já abertos uma vez com internet naquele 
 
 ## 7. Integrações com o Google (opcionais)
 
-Conecta-se uma vez em **"Minha conta"** (toque no seu email no topo da página). Permissões pedidas: `calendar.events` e `drive.file`. O `drive.file` só dá acesso ao que o próprio CAPTURA cria.
+Conecta-se uma vez em **"Minha conta"** (toque no seu email no topo da página). Permissões pedidas: `calendar.events.owned` e `drive.file`. O `calendar.events.owned` limita a sincronização às agendas que pertencem ao usuário; o `drive.file` limita o acesso aos arquivos que o app usa.
 
 ### Google Calendar
 - **Botão manual "Adicionar ao Google Calendar":** abre a agenda já preenchida com título, data, local e link do checklist. **Não precisa conectar o Google.** A cópia salva assim não é atualizada depois.
