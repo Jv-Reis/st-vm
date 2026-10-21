@@ -15,6 +15,7 @@ import { decideAccess, isValidShareToken, isValidEventId, normalizeShareMode, st
 import { createInviteProcessor, normalizeEmailList, summarizeInvites } from './lib/member-invites.js';
 import { createWorkerLogger } from './lib/transient.js';
 import { sanitizeProgressPayload } from './lib/progress-payload.js';
+import { safeErrorInfo } from './lib/safe-error.js';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -27,15 +28,16 @@ if (process.env.SENTRY_DSN) {
 // console.error continua indo pro log do Render (útil olhando ao vivo); isso
 // só soma o envio pro Sentry (agrupamento, alerta por e-mail, stack trace) —
 // sem SENTRY_DSN configurada, vira só o console.error de sempre.
+// Só um resumo seguro do erro sai do servidor (ver lib/safe-error.js): o
+// objeto cru de erros do Google OAuth carrega tokens e o segredo do app.
 function logError(message, err) {
-  console.error(message, err);
+  const info = safeErrorInfo(err);
+  console.error(message, info);
   if (process.env.SENTRY_DSN) {
-    // erros do Supabase (e outros libs) não são instância de Error — são um
-    // objeto com .message/.code/.details. String(err) neles vira "[object
-    // Object]", perdendo a informação; por isso o fallback usa err.message
-    // quando existe, e guarda o objeto original inteiro como contexto extra.
-    const wrapped = err instanceof Error ? err : new Error((err && err.message) || String(err));
-    Sentry.captureException(wrapped, { extra: { message, original: err } });
+    const wrapped = new Error(info.message || message);
+    if (info.name) wrapped.name = info.name;
+    if (err instanceof Error && err.stack) wrapped.stack = err.stack;
+    Sentry.captureException(wrapped, { extra: { message, ...info } });
   }
 }
 
@@ -418,6 +420,21 @@ app.get('/api/google/status', requireAuth, async (req, res) => {
 });
 
 app.post('/api/google/disconnect', requireAuth, async (req, res) => {
+  // Desconectar também revoga o acesso no próprio Google (melhor esforço):
+  // os tokens são apagados aqui mesmo se a revogação falhar.
+  if (supabaseAdmin) {
+    const { data } = await supabaseAdmin.from('google_calendar_accounts').select('refresh_token_enc').eq('user_id', req.user.id).maybeSingle();
+    if (data?.refresh_token_enc) {
+      try {
+        await Promise.race([
+          googleOAuthClient(null).revokeToken(decryptToken(data.refresh_token_enc)),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout ao revogar no Google')), 5000))
+        ]);
+      } catch (err) {
+        logError('Não consegui revogar o acesso no Google (os tokens são apagados mesmo assim):', err);
+      }
+    }
+  }
   const db = scopedClient(req.token);
   const { error } = await db.from('google_calendar_accounts').delete().eq('user_id', req.user.id);
   if (error) return res.status(500).json({ error: 'Não consegui desconectar.' });

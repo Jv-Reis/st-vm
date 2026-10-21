@@ -19,28 +19,42 @@
   .policy-wrap ul{margin:8px 0; padding-left:22px;}
   .policy-wrap a{color:var(--amber);}
   .policy-wrap strong{color:var(--text);}
-  .policy-back{display:inline-block; margin-bottom:24px;}
+  .policy-back{display:inline-flex; margin-bottom:24px;}
 </style>
 </head>
 <body>
 <div class="policy-wrap">
   <a class="btn policy-back" href="/"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Voltar pro CAPTURA</a>
   <h1>Política de Privacidade do CAPTURA</h1>
-  <p class="policy-updated">Última atualização: 5 de outubro de 2026</p>
+  <p class="policy-updated">Última atualização: 21 de outubro de 2026</p>
 
   <p>O CAPTURA é uma ferramenta de checklist de cobertura de eventos (casamentos, festas e afins). Esta página explica quais dados coletamos, pra que usamos, e como você pode controlá-los.</p>
 
   <h2>Quais dados coletamos</h2>
   <ul>
-    <li><strong>Email</strong>: quando você cria conta (login por link mágico ou por "Entrar com Google"), guardamos seu email pra identificar sua conta.</li>
+    <li><strong>Email</strong>: quando você cria conta (login por link mágico ou por "Entrar com Google"), guardamos seu email pra identificar sua conta. Os dados que vêm do Google têm uma seção própria, <a href="#dados-google">Dados do usuário do Google</a>.</li>
     <li><strong>Conteúdo que você cria</strong>: o roteiro que você cola, e o checklist gerado a partir dele (fases, cenas, textos, nome/data/local do evento).</li>
     <li><strong>Progresso do evento</strong>: quais cenas foram marcadas como "em andamento"/"feito" e quando, pra sincronizar isso ao vivo entre a equipe.</li>
     <li><strong>Convites para a equipe</strong>: quando o dono de um evento adiciona alguém pelo email, guardamos esse email, a situação do convite (pendente, enviado, adicionado ou com falha), o número de tentativas e quem pediu, pra mostrar o resultado e reenviar só o que falhou.</li>
-    <li><strong>Conexão com Google Calendar e Drive (opcional)</strong>: só se você conectar essa integração, guardamos um token de acesso pra criar eventos na sua agenda e pastas no seu Drive em seu nome. Nunca lemos ou acessamos arquivos que o CAPTURA não criou.</li>
+    <li><strong>Conexão com Google Calendar e Drive (opcional)</strong>: só se você conectar essa integração, guardamos um token de acesso criptografado pra criar eventos na sua agenda e pastas no seu Drive em seu nome. Detalhes em <a href="#dados-google">Dados do usuário do Google</a>.</li>
   </ul>
 
   <h2>Como usamos esses dados</h2>
-  <p>Usamos seus dados só pra fazer o CAPTURA funcionar: gerar e exibir sua checklist, sincronizar progresso entre a equipe em tempo real, e (se você pedir) criar eventos no Calendar e pastas no Drive. Não vendemos, alugamos nem usamos seus dados pra publicidade.</p>
+  <p>Usamos seus dados apenas para fornecer e melhorar os recursos do CAPTURA que você usa: gerar e exibir seu checklist, sincronizar o progresso entre a equipe em tempo real e, se você pedir, criar eventos no Calendar e pastas no Drive. Não vendemos nem alugamos seus dados e não os usamos para publicidade. Os dados do Google seguem regras ainda mais restritas, descritas na seção abaixo.</p>
+
+  <h2 id="dados-google">Dados do usuário do Google</h2>
+  <p>O CAPTURA só acessa dados da sua conta Google quando você escolhe usar um recurso que precisa deles:</p>
+  <ul>
+    <li><strong>Entrar com Google</strong>: o Google nos envia seu endereço de email, nome e foto do perfil básico. Usamos apenas o email, para criar e identificar sua conta no CAPTURA.</li>
+    <li><strong>Google Calendar</strong> (permissão <code>calendar.events</code>), somente se você conectar: criamos, atualizamos e excluímos na sua agenda principal os eventos criados pelo CAPTURA (título, data, local e o link do checklist), incluindo o convite para os convidados que você informar. Não lemos, não listamos e não alteramos nenhum outro evento da sua agenda.</li>
+    <li><strong>Google Drive</strong> (permissão <code>drive.file</code>), somente se você conectar e pedir: criamos pastas para o evento. Essa permissão só dá acesso ao que o próprio CAPTURA cria. Não lemos, não baixamos e não enviamos arquivos.</li>
+    <li><strong>Email da conta Google conectada</strong>: mostramos em "Minha conta" para você saber qual conta está conectada, e usamos para não mandar um convite repetido a quem já recebe o evento automaticamente na agenda.</li>
+  </ul>
+  <p><strong>Para que usamos.</strong> Os dados do Google são usados exclusivamente para fornecer os recursos descritos acima, que você pediu e vê no próprio CAPTURA. Não usamos dados do Google para nenhuma outra finalidade: não usamos para publicidade, não vendemos, não usamos para criar perfis, não usamos para avaliar crédito e não usamos para treinar modelos de inteligência artificial ou de aprendizado de máquina. Nenhum dado do Google é enviado à Anthropic (Claude): a inteligência artificial recebe apenas o texto do roteiro que você cola no CAPTURA.</p>
+  <p><strong>Compartilhamento.</strong> Não transferimos dados do Google para terceiros, exceto: ao Supabase, que hospeda o banco de dados onde guardamos os tokens de acesso criptografados; quando a lei exigir; ou com o seu consentimento. Os registros de erro do servidor (Render e Sentry) não incluem tokens nem dados vindos do Google.</p>
+  <p><strong>Acesso por pessoas.</strong> Ninguém da equipe do CAPTURA lê seus dados do Google, exceto com sua permissão explícita, para investigar abuso ou problemas de segurança, ou quando a lei exigir.</p>
+  <p><strong>Armazenamento e exclusão.</strong> Os tokens de acesso ao Google ficam criptografados (AES-256-GCM). Ao desconectar o Google em "Minha conta", apagamos os tokens e revogamos o acesso do CAPTURA na sua conta Google. Você também pode revogar a qualquer momento em <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>. Eventos e pastas já criados continuam na sua conta Google, sob seu controle. Para excluir sua conta e todos os seus dados do CAPTURA, escreva para o email no fim desta página.</p>
+  <p><strong>Uso Limitado.</strong> O uso e a transferência, pelo CAPTURA, de informações recebidas das APIs do Google seguem a <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Política de Dados do Usuário dos Serviços de API do Google</a> (Google API Services User Data Policy), incluindo os requisitos de Uso Limitado.</p>
 
   <h2>Links de compartilhamento</h2>
   <p>O dono escolhe, em cada evento, quem pode abri-lo: <strong>somente a equipe</strong> (pessoas com conta que foram adicionadas), <strong>link para visualizar</strong> (quem tiver o link vê o checklist, sem alterar) ou <strong>link para colaborar</strong> (quem tiver o link também marca o progresso e pode entrar na equipe). O link usa um código aleatório, diferente do identificador do evento, e pode ser desativado ou trocado a qualquer momento: o link anterior para de funcionar na hora, e quem estiver com o evento aberto por ele perde o acesso. Quem entra só pelo link não vê os emails da equipe nem dos convidados. Endereços antigos dos eventos criados antes desse controle continuam abrindo por um período de transição, que termina antes se o dono mudar o compartilhamento.</p>
@@ -54,9 +68,9 @@
   <h2>Com quem compartilhamos</h2>
   <ul>
     <li><strong>Supabase</strong>: hospeda nosso banco de dados, cuida do login e envia os emails de login e de convite para a equipe.</li>
-    <li><strong>Anthropic (Claude)</strong>: o texto do roteiro que você cola é enviado pra essa IA só na hora de gerar o checklist, pra organizar em fases/cenas.</li>
-    <li><strong>Google</strong>: só se você conectar Calendar/Drive, usamos a API do Google em seu nome, com sua autorização explícita.</li>
-    <li><strong>Sentry</strong>: registra erros técnicos do servidor pra gente conseguir corrigir bugs mais rápido.</li>
+    <li><strong>Anthropic (Claude)</strong>: só o texto do roteiro que você cola é enviado a essa IA, na hora de gerar o checklist, para organizar em fases e cenas. Nenhum dado do Google é enviado à Anthropic.</li>
+    <li><strong>Google</strong>: só se você conectar Calendar/Drive, usamos a API do Google em seu nome, com sua autorização explícita, apenas para os recursos da seção <a href="#dados-google">Dados do usuário do Google</a>.</li>
+    <li><strong>Sentry</strong>: registra erros técnicos do servidor (tipo e mensagem do erro) para corrigirmos falhas mais rápido. Não recebe tokens nem dados vindos do Google.</li>
   </ul>
   <p>Nenhum desses serviços tem permissão pra usar seus dados fora do que é necessário pra rodar o CAPTURA.</p>
 
@@ -64,7 +78,7 @@
   <p>Os dados ficam num banco Postgres (Supabase, região São Paulo). O acesso é controlado por regras de permissão a nível de banco (RLS): cada evento só pode ser lido/editado por quem é dono ou foi autorizado pelo dono. Tokens de acesso ao Google ficam criptografados (AES-256-GCM) antes de salvar, nunca em texto puro.</p>
 
   <h2>Seus direitos</h2>
-  <p>Você pode pedir acesso, correção ou exclusão dos seus dados a qualquer momento, entrando em contato pelo email abaixo, conforme a Lei Geral de Proteção de Dados (LGPD). Desconectar sua conta Google (no próprio CAPTURA ou em <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>) revoga nosso acesso à sua agenda/Drive imediatamente.</p>
+  <p>Você pode pedir acesso, correção ou exclusão dos seus dados a qualquer momento, entrando em contato pelo email abaixo, conforme a Lei Geral de Proteção de Dados (LGPD). Desconectar sua conta Google (em "Minha conta", no próprio CAPTURA, ou em <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>) revoga nosso acesso à sua agenda/Drive imediatamente.</p>
 
   <h2>Cookies e armazenamento local</h2>
   <p>O CAPTURA guarda algumas preferências só no seu navegador (localStorage), como o modo de visualização do histórico, e usa cache local (service worker) pra funcionar offline. Isso não sai do seu aparelho.</p>
