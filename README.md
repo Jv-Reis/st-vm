@@ -69,10 +69,25 @@ Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em 
 3. **Crie uma conta no Render** em [render.com](https://render.com) (sem cartão de crédito no plano free) e conecte sua conta do GitHub.
 4. No painel do Render, clique em **New → Blueprint**, selecione o repositório que você acabou de subir. O Render vai ler o `render.yaml` e configurar o serviço sozinho (nome, comandos de build/start, plano free).
 5. Ele vai pedir pra você preencher as variáveis de ambiente (não vêm do arquivo por segurança) — copie os mesmos valores do seu `.env` local: `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` são obrigatórias; `SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `OAUTH_STATE_SECRET` só são necessárias se for usar a sincronização automática com Google Calendar (seção própria mais abaixo) — sem elas o resto do site funciona normal.
-6. Clique em **Deploy**. Em alguns minutos o Render te dá uma URL pública (tipo `https://captura-checklist.onrender.com`) — é esse domínio que substitui o `localhost:3000` pra todo mundo da equipe.
+6. Clique em **Deploy**. Em alguns minutos o Render te dá uma URL pública (tipo `https://captura-checklist.onrender.com`). Em produção, o CAPTURA usa o domínio próprio `https://app.captura-checklist.com.br` (ver "Domínio próprio" abaixo); o endereço do Render redireciona para ele.
 7. Lembrete do plano free: se ninguém acessar por 15 minutos, o serviço "dorme" e o próximo acesso demora uns 30-50s pra responder (depois volta ao normal). A IA e o banco não têm esse problema, é só o servidor "acordando".
-8. Não esqueça de adicionar a URL de produção (ex: `https://captura-checklist.onrender.com`) nos Redirect URLs do Supabase (Authentication → URL Configuration), senão o magic link só funciona em `localhost`.
+8. Não esqueça de configurar a URL de produção (`https://app.captura-checklist.com.br`) como Site URL e nos Redirect URLs do Supabase (Authentication → URL Configuration), senão o login volta para o endereço errado.
 9. Serviço já existente (não é um deploy do zero)? Adicione as variáveis novas direto em **Environment** no painel do serviço no Render (não precisa recriar nada) e clique em "Manual Deploy" depois de salvar.
+
+## Domínio próprio
+
+O CAPTURA roda em **https://app.captura-checklist.com.br** (a landing page fica em https://captura-checklist.com.br). O endereço técnico do Render, `https://captura-checklist.onrender.com`, continua existindo, mas não é mais usado pelas pessoas.
+
+**Configuração** (feita uma vez, fora do código):
+- **Render** → Settings → Custom Domains: `app.captura-checklist.com.br` (com o certificado emitido pelo próprio Render). Em **Environment**: `APP_BASE_URL=https://app.captura-checklist.com.br`. É essa variável que define os links gerados pelo servidor (convites por email e descrição dos eventos no Google Calendar) e que liga o redirecionamento abaixo.
+- **Supabase** → Authentication → URL Configuration: **Site URL** `https://app.captura-checklist.com.br` e, em **Redirect URLs**, `https://app.captura-checklist.com.br/**`. Para testar login localmente, adicione também `http://localhost:3000/**`.
+- **Google Cloud** (projeto do Calendar/Drive) → Clientes → cliente OAuth → URIs de redirecionamento autorizados: `https://app.captura-checklist.com.br/api/google/oauth/callback` (além do localhost). Em Branding: página inicial `https://captura-checklist.com.br`, política `https://app.captura-checklist.com.br/privacidade.html` e domínio autorizado `captura-checklist.com.br`.
+
+**Endereço antigo → domínio novo** (`lib/legacy-host.js`, ativo só quando `APP_BASE_URL` aponta para outro host):
+- Páginas em `*.onrender.com` recebem **301** para o mesmo caminho no domínio novo. Links antigos já enviados (WhatsApp, agenda, emails, `/e/...`, `/s/...`) continuam funcionando.
+- `/api/*` **não** é redirecionado: um app antigo ainda aberto consegue enviar as marcações que estavam na fila offline, e o retorno do OAuth do Google iniciado no endereço antigo ainda completa.
+- `/sw.js` no endereço antigo devolve um service worker de despedida, que apaga o cache antigo, se desinstala e recarrega as abas (que caem no redirecionamento). Sem isso, o app instalado pelo endereço antigo continuaria abrindo a cópia em cache, porque o navegador não segue redirecionamento no script do service worker.
+- Login, rascunhos e cópias offline ficam guardados por endereço: quem usava o endereço antigo entra de novo uma vez no domínio novo. Quem instalou o app pelo endereço antigo deve reinstalar a partir do domínio novo.
 
 ## Manter o site acordado (Google Apps Script)
 
@@ -81,7 +96,7 @@ Usa a **API da Anthropic (Claude Sonnet 5)** pra estruturar o roteiro colado em 
 **Script** (em [script.google.com](https://script.google.com), projeto próprio):
 ```javascript
 function pingCaptura() {
-  UrlFetchApp.fetch('https://captura-checklist.onrender.com/', { muteHttpExceptions: true });
+  UrlFetchApp.fetch('https://app.captura-checklist.com.br/', { muteHttpExceptions: true });
 }
 ```
 
@@ -165,7 +180,7 @@ Além do magic link, dá pra entrar direto com a conta Google — botão "Entrar
 **Configuração (feita direto no Google Cloud + Supabase Dashboard, nenhuma variável de ambiente no `.env`/Render):**
 1. Crie um projeto no Google Cloud **dedicado só a isso** — não reaproveite o projeto do Calendar/Drive.
 2. Em Authentication → Sign In / Providers → Google no Supabase, copie a **Callback URL** exibida ali (formato `https://<seu-projeto>.supabase.co/auth/v1/callback`) — é essa URL, e não a do próprio CAPTURA, que vai no Google Cloud (quem processa a troca do código OAuth é o Supabase, não o nosso servidor).
-3. No Google Cloud, em "Público-alvo" (tela de consentimento): tipo Externo. Preencha nome do app, email de suporte, **Domínios autorizados** (`captura-checklist.onrender.com`), **Página inicial** e **Política de Privacidade** (`/privacidade.html`, já existe no projeto) — **sem logo**, pra não cair na verificação de marca (que exige provar posse do domínio via Google Search Console e pode demorar dias).
+3. No Google Cloud, em "Público-alvo" (tela de consentimento): tipo Externo. Preencha nome do app, email de suporte, **Domínios autorizados** (`captura-checklist.com.br`), **Página inicial** e **Política de Privacidade** (`/privacidade.html`, já existe no projeto) — **sem logo**, pra não cair na verificação de marca (que exige provar posse do domínio via Google Search Console e pode demorar dias).
 4. Em "Clientes" → criar cliente OAuth, tipo Aplicativo da Web, colando a Callback URL do passo 2 em "URIs de redirecionamento autorizados".
 5. Em "Público-alvo" → "Publicar app", pra qualquer conta Google poder entrar (não só emails pré-aprovados como testador).
 6. Cole o Client ID e o Client Secret gerados em Supabase → Authentication → Sign In / Providers → Google, habilite o toggle e salve.
@@ -176,14 +191,15 @@ Contas que já existiam por magic link são automaticamente ligadas à mesma con
 
 Sem configurar nada, o botão "📅 Google Calendar" (link simples) continua funcionando normalmente. A parte de **"🔗 Conectar Google (Calendar + Drive)"** (sincronização automática do Calendar, que edita em vez de duplicar, + criação de estrutura de pastas no Drive) só liga depois de configurar um projeto no Google Cloud — segue o mesmo espírito do SMTP do Gmail: precisa da sua conta Google, ninguém faz isso por você. É **uma conexão só** cobrindo as duas coisas — não precisa conectar duas vezes.
 
-✅ **Publicado** (Público-alvo → "Em produção") — não é mais preciso estar numa lista de testador pra conectar. Como a verificação completa de marca ainda não foi feita (esbarra numa limitação do domínio compartilhado do Render — ver nota mais abaixo), quem conectar vê a tela padrão do Google de "app não verificado" antes de autorizar (clica em "Avançado" → "Acessar mesmo assim" e segue normal). Limite de 100 contas usando escopos sensíveis não aprovados enquanto não sair desse estado — verificação completa exige domínio próprio.
+✅ **Publicado** (Público-alvo → "Em produção") — não é mais preciso estar numa lista de testador pra conectar. Com o domínio próprio (ver "Domínio próprio"), a **marca foi verificada** pelo Google em outubro de 2026; a verificação do acesso aos escopos estava em andamento (a política de privacidade ganhou a seção "Dados do usuário do Google" com a declaração de Uso Limitado). Enquanto essa verificação não termina, quem conectar pode ver a tela de "app não verificado" (clica em "Avançado" e segue normal), e vale o limite de 100 contas usando escopos sensíveis não aprovados.
 
 **1. Criar as credenciais no Google Cloud**
 - Acesse [console.cloud.google.com](https://console.cloud.google.com/), crie (ou reaproveite) um projeto, e ative a **Google Calendar API** e a **Google Drive API** (menu "APIs e serviços" → "Biblioteca", uma de cada vez).
 - Em "Tela de permissão OAuth": tipo **Externo**. Em "Público-alvo" → "Publicar app", pra qualquer conta Google conseguir conectar (sem isso, fica restrito a quem for adicionado manualmente como testador).
 - Em "Credenciais" → "Criar credenciais" → **ID do cliente OAuth**, tipo **Aplicativo Web**. Em "URIs de redirecionamento autorizados", adicione:
   - `http://localhost:3000/api/google/oauth/callback` (pra testar local)
-  - `https://captura-checklist.onrender.com/api/google/oauth/callback` (produção)
+  - `https://app.captura-checklist.com.br/api/google/oauth/callback` (produção)
+  - `https://captura-checklist.onrender.com/api/google/oauth/callback` (endereço antigo; pode sair depois da migração)
 - Copie o **Client ID** e o **Client Secret** gerados.
 
 **2. Variáveis de ambiente**
@@ -198,7 +214,7 @@ OAUTH_STATE_SECRET=...
 - `TOKEN_ENCRYPTION_KEY` / `OAUTH_STATE_SECRET`: gere cada uma rodando `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — são duas chaves aleatórias separadas, sem relação com nenhuma outra credencial do projeto. **Guarde a `TOKEN_ENCRYPTION_KEY` com cuidado**: se ela for perdida ou trocada, todas as contas Google conectadas precisam se reconectar (os tokens salvos ficam ilegíveis sem ela).
 
 **3. Usar**
-Com as variáveis configuradas (local no `.env`, produção nas env vars do Render), o botão "🔗 Conectar Google (Calendar + Drive)" aparece em **"Meus eventos"** (é uma configuração da conta, não de um evento específico — conecta uma vez só). Depois de conectado:
+Com as variáveis configuradas (local no `.env`, produção nas env vars do Render), o botão **"Conectar Google"** aparece em **"Minha conta"** (tocando no email no topo; é uma configuração da conta, não de um evento específico — conecta uma vez só). Depois de conectado:
 - Publicar/editar qualquer evento seu com data passa a criar/atualizar automaticamente na sua agenda — a mesma edição de antes (que só duplicava) agora atualiza o evento certo.
 - Na prévia de qualquer evento, o campo "Estrutura de pastas pro Google Drive" + botão "📁 Criar estrutura no Google Drive" cria de verdade uma pasta com o nome do evento (e as subpastas listadas) no seu Drive — só a estrutura vazia, o site nunca guarda nem envia foto/arquivo nenhum. Depois de criada, editar o evento e mudar essa lista mostra em vez disso "🔄 Adicionar pastas novas ao Drive" — dá pra acrescentar subpasta numa estrutura já publicada a qualquer momento. Só acrescenta: nomes repetidos são reaproveitados (nunca duplicam) e tirar uma linha da lista não apaga a pasta correspondente no Drive, mesmo que ela já tenha arquivo dentro — remover pasta continua sendo manual, direto no Drive.
 
@@ -223,9 +239,9 @@ Também funciona **offline**: depois de abrir um evento pelo menos uma vez com i
 
 Antes de publicar esta versão, execute `supabase-calendar-delegation.sql` uma vez no SQL Editor do Supabase. A migração cria autorizações com RLS, referências por participante, fila persistente e trava entre servidores; preserva os IDs antigos do Calendar. Requer as tabelas e migrações de membros já existentes. Não execute o servidor novo contra o banco antigo.
 
-Configure `APP_BASE_URL` com a URL pública do CAPTURA se estiver fora do Render. No Render, usa `RENDER_EXTERNAL_URL`; localmente, `http://localhost:3000` (ou PORT).
+Configure `APP_BASE_URL` com a URL pública do CAPTURA (em produção, `https://app.captura-checklist.com.br`). Sem ela, o servidor usa `RENDER_EXTERNAL_URL` no Render e `http://localhost:3000` (ou PORT) localmente.
 
-1. Y entra em **Meus eventos**, conecta seu Google e, em **Quem pode adicionar eventos à minha agenda**, autoriza o email de login de X no CAPTURA. X precisa ter conta. O Google conectado pode ter email diferente do login.
+1. Y entra em **Minha conta** (tocando no email no topo), conecta seu Google e, em **Quem pode adicionar eventos à minha agenda**, autoriza o email de login de X no CAPTURA. X precisa ter conta. O Google conectado pode ter email diferente do login.
 2. X inclui Y em **Membros da equipe** na prévia ou em **Gerenciar equipe**. Não precisa repetir Y em Convidados do Google Calendar. X não precisa conectar o próprio Google para sincronizar a agenda de Y.
 3. Eventos com data, inclusive os já existentes, são criados diretamente na agenda principal de Y, sem convite. O CAPTURA mantém cópias independentes: alterações e exclusões devem ser feitas no CAPTURA, que as propaga. Alterações feitas diretamente no Google não voltam para o CAPTURA.
 4. Y pode revogar X a qualquer momento. Isso interrompe novas escritas e mantém os eventos existentes. Desconectar o Google pausa todas as sincronizações; reconectar retoma as autorizações ainda existentes. Para interromper apenas um evento, Y pode removê-lo dos seus eventos salvos; a cópia é excluída enquanto conexão e autorização estiverem ativas.

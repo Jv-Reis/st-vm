@@ -16,6 +16,7 @@ import { createInviteProcessor, normalizeEmailList, summarizeInvites } from './l
 import { createWorkerLogger } from './lib/transient.js';
 import { sanitizeProgressPayload } from './lib/progress-payload.js';
 import { safeErrorInfo } from './lib/safe-error.js';
+import { legacyHostAction, RETIRE_SW_SCRIPT } from './lib/legacy-host.js';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -57,6 +58,26 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
+});
+
+// Endereço antigo (onrender.com) → domínio próprio. Só age com APP_BASE_URL
+// configurada e apontando pra outro host (ver lib/legacy-host.js).
+app.use((req, res, next) => {
+  const decision = legacyHostAction({
+    host: req.hostname,
+    path: req.path,
+    method: req.method,
+    appBaseUrl: process.env.APP_BASE_URL,
+    legacyHosts: [process.env.RENDER_EXTERNAL_HOSTNAME].filter(Boolean)
+  });
+  if (!decision) return next();
+  if (decision.action === 'retire-sw') {
+    res.set('Content-Type', 'application/javascript; charset=utf-8');
+    res.set('Cache-Control', 'no-store');
+    return res.send(RETIRE_SW_SCRIPT);
+  }
+  const query = req.originalUrl.slice(req.path.length);
+  res.redirect(301, decision.location + query);
 });
 
 app.use(express.json({ limit: '1mb' }));
