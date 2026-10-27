@@ -69,7 +69,6 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const addMemberBtn = document.getElementById('addMemberBtn');
   const addMemberStatus = document.getElementById('addMemberStatus');
   const googleCalendarConnectBtn = document.getElementById('googleCalendarConnectBtn');
-  const googleTestingNote = document.getElementById('googleTestingNote');
   const reportView = document.getElementById('reportView');
   const reportContent = document.getElementById('reportContent');
   const previewEventDate = document.getElementById('previewEventDate');
@@ -1416,12 +1415,11 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const status = document.getElementById('googleAccountStatus');
     if(!currentUser){
       googleCalendarConnectBtn.hidden = true;
-      googleTestingNote.hidden = true;
       return;
     }
     try {
       const result = await fetchGoogleStatus();
-      if(!result){ googleCalendarConnectBtn.hidden = true; googleTestingNote.hidden = true; return; }
+      if(!result){ googleCalendarConnectBtn.hidden = true; return; }
       googleCalendarConnected = !!result.connected;
       googleCalendarConnectBtn.hidden = false;
       renderGoogleConnectButton();
@@ -1429,12 +1427,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         ? 'Conectado' + (result.email ? ' como ' + result.email : '') + '.'
         : 'Não conectado.';
       status.classList.toggle('is-on', googleCalendarConnected);
-      // só mostra o aviso de "app não verificado" pra quem ainda não conectou:
-      // depois de conectado, já deu certo, não faz sentido continuar avisando
-      googleTestingNote.hidden = googleCalendarConnected;
     } catch(err){
       googleCalendarConnectBtn.hidden = true;
-      googleTestingNote.hidden = true;
       status.textContent = 'Não foi possível verificar a conexão com o Google.';
     }
   }

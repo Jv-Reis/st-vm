@@ -240,7 +240,7 @@ Se a landing disser algo disto, está errado:
 
 ## Pontos de atenção para a landing
 
-- **Google não verificado:** o app do Google ainda não tem a verificação completa de marca. Ao conectar, o Google pode mostrar a tela de "app não verificado". Evite dizer "verificado pelo Google".
+- **Google verificado:** o app foi verificado pelo Google (outubro de 2026). Ao conectar, a tela de consentimento mostra o CAPTURA como app verificado, sem aviso de "app não verificado". Pode citar isso na landing.
 - **"Grátis":** só é correto enquanto não houver plano pago. Evite "grátis para sempre" ou "ilimitado", porque existem os limites acima.
 - **"Funciona offline":** é verdade com a ressalva de ter aberto o evento antes com internet.
 - **"Tempo real":** é verdade para status, missões e observações entre quem está com o evento aberto.

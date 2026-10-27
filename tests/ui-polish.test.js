@@ -21,7 +21,6 @@ test('"Minha conta" mostra email, estado do Google e quem pode adicionar à agen
   assert.equal(b.element('accountEmail').textContent, 'dono@example.com');
   assert.equal(b.element('googleAccountStatus').textContent, 'Conectado como dono@gmail.com.');
   assert.match(b.element('googleCalendarConnectBtn').innerHTML, /Desconectar Google/);
-  assert.equal(b.element('googleTestingNote').hidden, true, 'conectado: sem aviso de app não verificado');
   assert.match(b.element('calendarPermissionsList').innerHTML, /ana@example\.com/);
 });
 
@@ -86,4 +85,9 @@ test('sem emoji nem seta de texto na interface; sem travessão no texto visível
   assert.equal(dash, undefined, 'travessão em app.js: ' + dash);
   const emoji = lines.find(l => EMOJI.test(l.replace(/[✓✨]/g, '')));
   assert.equal(emoji, undefined, 'emoji em app.js: ' + emoji);
+});
+
+test('app verificado pelo Google: sem aviso de "app não verificado" em Minha conta', async () => {
+  const html = await read('public/index.html');
+  assert.doesNotMatch(html, /não verificado|não seguro/);
 });

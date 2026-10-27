@@ -118,7 +118,7 @@ Revisão feita com os skills **impeccable** (critique + audit) e **design-taste-
 
 | ID | Sev. | Problema | Onde | Sugestão |
 |---|---|---|---|---|
-| F1 | P2 | O aviso do Google ("app não verificado... clique em não seguro") aparece logo antes de conectar e prejudica a confiança. | index.html:287 | Resolver a verificação do Google; até lá, texto mais tranquilizador. |
+| F1 | ✅ | **Resolvido (out/2026):** o app foi verificado pelo Google e o aviso de "app não verificado" saiu de "Minha conta". | - | - |
 | F2 | P2 | Cada card do histórico tem um botão amarelo "Editar". Repetido em todos, o "principal" perde o sentido. | app.js:1835-1849 | Destaque só para a ação mais comum, ou nenhum. |
 | F3 | P3 | O formulário "Quem pode adicionar eventos à minha agenda" fica na página do histórico, fora de lugar. | Meus eventos | Mover para uma área de configurações da conta. |
 | F4 | P3 | `.calendar-permissions` usa cor `#7775` e raio de 12px, fora do sistema. | styles.css:401 | Usar os tokens. |

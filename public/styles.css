@@ -94,7 +94,6 @@ a{color:inherit;}
 /* ---------- PREVIEW / EDIT VIEW ---------- */
 .preview-topbar{position:sticky; top:0; z-index:40; background:rgba(18,20,28,0.92); backdrop-filter:blur(14px); border-bottom:1px solid var(--border); padding:16px 20px;}
 .preview-topbar-inner{max-width:900px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;}
-.google-testing-note{max-width:900px; margin:10px auto 0; font-size:0.8rem; line-height:1.5; color:var(--amber); background:var(--amber-soft); border:1px solid rgba(255,212,0,0.3); border-radius:var(--radius-sm); padding:8px 14px;}
 .preview-eyebrow{font-family:var(--font-mono); font-size:0.75rem; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.1em;}
 .preview-heading{font-family:var(--font-display); font-weight:700; font-size:1.1rem; margin-top:2px;}
 .preview-view{max-width:900px; margin:0 auto; padding:28px 20px 90px;}
@@ -615,9 +614,6 @@ input[type="datetime-local"]:focus-within{outline:2px solid var(--amber);outline
 .account-section p{margin:0 0 12px; line-height:1.6; color:var(--text-muted);}
 .account-status{font-weight:600;}
 .account-status.is-on{color:var(--green);}
-.google-testing-note{display:flex; gap:10px; align-items:flex-start; margin:14px 0 0;}
-.google-testing-note[hidden]{display:none;}
-.google-testing-note .icon{flex:none; margin-top:2px;}
 
 /* atalho no histórico: avisa que a seção existe e leva pra "Minha conta" */
 .account-shortcut{display:flex; align-items:center; gap:14px; flex-wrap:wrap; min-height:60px; margin:0 0 20px; padding:14px 18px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); text-decoration:none; transition:border-color .15s ease;}

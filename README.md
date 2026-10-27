@@ -191,7 +191,7 @@ Contas que já existiam por magic link são automaticamente ligadas à mesma con
 
 Sem configurar nada, o botão "📅 Google Calendar" (link simples) continua funcionando normalmente. A parte de **"🔗 Conectar Google (Calendar + Drive)"** (sincronização automática do Calendar, que edita em vez de duplicar, + criação de estrutura de pastas no Drive) só liga depois de configurar um projeto no Google Cloud — segue o mesmo espírito do SMTP do Gmail: precisa da sua conta Google, ninguém faz isso por você. É **uma conexão só** cobrindo as duas coisas — não precisa conectar duas vezes.
 
-✅ **Publicado** (Público-alvo → "Em produção") — não é mais preciso estar numa lista de testador pra conectar. Com o domínio próprio (ver "Domínio próprio"), a **marca foi verificada** pelo Google em outubro de 2026; a verificação do acesso aos escopos estava em andamento (a política de privacidade ganhou a seção "Dados do usuário do Google" com a declaração de Uso Limitado). Enquanto essa verificação não termina, quem conectar pode ver a tela de "app não verificado" (clica em "Avançado" e segue normal), e vale o limite de 100 contas usando escopos sensíveis não aprovados.
+✅ **Publicado** (Público-alvo → "Em produção") — não é mais preciso estar numa lista de testador pra conectar. Com o domínio próprio (ver "Domínio próprio"), o app foi **verificado pelo Google** em outubro de 2026 (marca e acesso aos escopos `calendar.events.owned` e `drive.file`). A tela de consentimento mostra o app verificado, sem o aviso de "app não verificado" e sem o limite de 100 contas. A política de privacidade tem a seção "Dados do usuário do Google" com a declaração de Uso Limitado; qualquer mudança de escopo precisa passar por nova verificação.
 
 **1. Criar as credenciais no Google Cloud**
 - Acesse [console.cloud.google.com](https://console.cloud.google.com/), crie (ou reaproveite) um projeto, e ative a **Google Calendar API** e a **Google Drive API** (menu "APIs e serviços" → "Biblioteca", uma de cada vez).
@@ -230,8 +230,8 @@ Também funciona **offline**: depois de abrir um evento pelo menos uma vez com i
 
 ✅ Já validado em campo — vários eventos reais publicados e usados de ponta a ponta (casamentos, aniversário de 15 anos, debutante, evento corporativo), por mais de uma pessoa além de quem criou o projeto, incluindo colaboração em equipe (mais de um membro atualizando progresso no mesmo evento). Os itens de "testar num celular de verdade" e "convidar a equipe pra usar num evento real" que estavam aqui já aconteceram.
 
-1. Landing page de divulgação — feita em projeto separado (`captura-landing`, React/Vite/Tailwind), deploy ainda pendente (ver plano de ir pro Vercel + domínio próprio).
-2. Google Cloud publicado (✅ feito) — falta só a verificação completa de marca (exige domínio próprio) pra tirar a tela de "app não verificado" e o limite de 100 contas.
+1. ✅ Landing page de divulgação publicada em https://captura-checklist.com.br (projeto separado, React/Vite/Tailwind, na Vercel).
+2. ✅ Google Cloud publicado e app verificado pelo Google (outubro de 2026), no domínio próprio.
 3. Definir modelo de monetização (ver discussão na sessão do Claude Code — por evento tende a fazer mais sentido que assinatura, dado que o custo variável principal é a geração via IA).
 4. Convite de Calendar pra quem não tem conta no CAPTURA (convidado externo de verdade, não membro da equipe) continua sendo só o link manual — a sincronização automática por autorização (ver seção abaixo) resolve o caso de membros da equipe, mas não esse.
 

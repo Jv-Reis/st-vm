@@ -57,6 +57,11 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // HSTS: o navegador passa a usar sempre https no app por um ano. Só em
+  // acesso https (o Render informa via X-Forwarded-Proto; trust proxy = 1),
+  // nunca no localhost em http. Sem includeSubDomains/preload: vale só pra
+  // este host, sem afetar a landing nem outros subdomínios.
+  if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
   next();
 });
 
