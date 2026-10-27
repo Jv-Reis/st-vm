@@ -91,3 +91,15 @@ test('app verificado pelo Google: sem aviso de "app não verificado" em Minha co
   const html = await read('public/index.html');
   assert.doesNotMatch(html, /não verificado|não seguro/);
 });
+
+test('prévia de compartilhamento: tags Open Graph com imagem 1200x630, sem dados de evento', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /<meta property="og:image" content="https:\/\/app\.captura-checklist\.com\.br\/og-image\.png">/);
+  assert.match(html, /<meta property="og:image:width" content="1200">/);
+  assert.match(html, /<meta name="twitter:card" content="summary_large_image">/);
+  assert.match(html, /<meta property="og:title" content="CAPTURA · Checklist da cobertura ao vivo">/);
+  const png = await readFile(new URL('../public/og-image.png', import.meta.url));
+  assert.equal(png.readUInt32BE(16), 1200, 'largura');
+  assert.equal(png.readUInt32BE(20), 630, 'altura');
+  assert.ok(png.length < 300 * 1024, 'abaixo do limite de prévia do WhatsApp');
+});
