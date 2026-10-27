@@ -50,17 +50,22 @@ test('Substituição avisa e não reutiliza IDs do progresso anterior', async ()
   await b.click('previewBackBtn');
   b.element('roteiroInput').value = 'Novo roteiro com conteúdo suficiente para gerar.';
   await b.click('generateBtn');
-  assert.match(b.confirmations[0], /progresso anterior/);
+  assert.equal(b.element('appConfirmDialog').open, true);
+  assert.match(b.element('appConfirmMessage').textContent, /progresso anterior/);
+  await b.click('appConfirmActionBtn');
+  await b.settle();
   await b.click('publishBtn');
   const payload = JSON.parse(b.calls.find(c => c.method === 'PATCH').body);
   assert.notEqual(payload.scenes[0].id, 'c1');
 });
 
 test('Recusar substituição não chama IA nem altera evento', async () => {
-  const b = await browser({ event: { ...reserved, ...generated }, confirm: false });
+  const b = await browser({ event: { ...reserved, ...generated } });
   await b.click('previewBackBtn');
   b.element('roteiroInput').value = 'Outro roteiro com conteúdo suficiente para gerar.';
   await b.click('generateBtn');
+  await b.click('appConfirmCancelBtn');
+  await b.settle();
   assert.equal(b.calls.some(c => c.url === '/api/parse-roteiro'), false);
   await b.click('cancelRoteiroBtn');
   assert.equal(b.element('previewView').hidden, false);

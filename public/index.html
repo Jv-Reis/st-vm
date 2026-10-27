@@ -563,16 +563,16 @@
   </div>
 </div>
 
-<dialog class="confirm-dialog" id="resetDialog" aria-labelledby="resetDialogTitle">
-  <h2 id="resetDialogTitle">Reiniciar o checklist?</h2>
-  <p id="resetDialogText"></p>
+<dialog class="confirm-dialog" id="appConfirmDialog" aria-labelledby="appConfirmTitle" aria-describedby="appConfirmMessage" data-tone="info">
+  <h2 id="appConfirmTitle"></h2>
+  <p id="appConfirmMessage"></p>
   <div class="confirm-actions">
-    <button class="btn btn-primary" id="resetCancelBtn" type="button" autofocus>Cancelar</button>
-    <button class="btn btn-danger" id="resetConfirmBtn" type="button">Reiniciar</button>
+    <button class="btn" id="appConfirmCancelBtn" type="button" autofocus>Cancelar</button>
+    <button class="btn btn-primary" id="appConfirmActionBtn" type="button">Confirmar</button>
   </div>
 </dialog>
 
-<div class="app-toast" id="appToast" role="status" aria-live="polite" hidden>
+<div class="app-toast" id="appToast" role="status" aria-live="polite" data-tone="info" hidden>
   <span id="appToastText"></span>
   <button class="btn" id="appToastAction" type="button" hidden></button>
 </div>

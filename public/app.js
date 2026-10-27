@@ -262,7 +262,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
 
   async function runGenerate(text){
     if(activeGeneration) return;
-    if(hasRoteiro(roteiroSource) && !confirm('Substituir o roteiro atual? As fases, cenas e missões serão substituídas, e o progresso anterior não será transferido para o novo roteiro. Os dados do evento serão mantidos. A mudança só será publicada ao salvar.')) return;
+    if(hasRoteiro(roteiroSource) && !await showConfirmDialog({ title: 'Substituir roteiro?', message: 'As fases, cenas e missões serão substituídas, e o progresso anterior não será transferido. Os dados do evento serão mantidos. A mudança só será publicada ao salvar.', confirmLabel: 'Substituir', tone: 'danger' })) return;
     const source = roteiroSource;
     const controller = new AbortController();
     activeGeneration = controller;
@@ -729,7 +729,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   async function createDriveFolderStructure(){
     const folders = previewDriveFolders.value.split('\n').map(s => s.trim()).filter(Boolean);
     if(!folders.length){
-      alert('Adicione pelo menos um nome de pasta antes de criar a estrutura.');
+      showToast('Adicione pelo menos um nome de pasta antes de criar a estrutura.', { tone: 'error' });
       return;
     }
     // com drive_folder_id já existindo, isso só ACRESCENTA pasta nova à
@@ -751,9 +751,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       if(!resp.ok) throw new Error(result.error || 'Erro ao ' + (isUpdate ? 'atualizar' : 'criar') + ' a estrutura.');
       draft.drive_folder_id = result.folderId;
       renderDriveFolderAction();
-      if(isUpdate) alert('Estrutura atualizada: pastas novas foram criadas no Drive. Nada existente foi removido ou duplicado.');
+      showToast(isUpdate ? 'Estrutura atualizada: pastas novas foram criadas no Drive.' : 'Pastas criadas no Drive.', { tone: 'success' });
     } catch(err){
-      alert('Não consegui ' + (isUpdate ? 'atualizar' : 'criar') + ' a estrutura (' + (err.message || 'erro desconhecido') + ').');
+      showToast('Não consegui ' + (isUpdate ? 'atualizar' : 'criar') + ' a estrutura (' + (err.message || 'erro desconhecido') + ').', { tone: 'error', ms: 8000 });
       if(btn){ btn.disabled = false; btn.innerHTML = driveButtonLabel(isUpdate); }
     }
   }
@@ -777,7 +777,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   const publishBtn = document.getElementById('publishBtn');
   publishBtn.addEventListener('click', async function(){
     draft.event_title = document.getElementById('previewEventTitle').value.trim() || 'Evento sem nome';
-    if(!draft.scenes.length && !confirm('Salvar o evento sem roteiro? Você poderá adicionar as fases e cenas depois, mantendo o mesmo link.')){
+    if(!draft.scenes.length && !await showConfirmDialog({ title: 'Salvar sem roteiro?', message: 'Você poderá adicionar fases e cenas depois, mantendo o mesmo link.', confirmLabel: 'Salvar assim' })){
       return;
     }
 
@@ -790,7 +790,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const wasEditing = editingEventId;
     // Com conflito aberto, salvar apagaria a alteração da outra pessoa.
     if(wasEditing && conflictState && conflictState.eventId === wasEditing){
-      alert('Este evento foi alterado por outra pessoa. Compare as versões e recarregue a mais recente antes de salvar (copie seu rascunho se precisar).');
+      showToast('Este evento foi alterado por outra pessoa. Compare as versões e recarregue a mais recente antes de salvar.', { tone: 'error', ms: 8000 });
       conflictPanel.hidden = false;
       window.scrollTo(0, 0);
       return;
@@ -835,7 +835,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       renderPublishSummary(result.members, { canRetry: wasOwnerSave });
       if(!wasEditing) showPublishShare();
     } catch(err){
-      alert('Não consegui salvar (' + (err.message || 'erro desconhecido') + ').');
+      showToast('Não consegui salvar (' + (err.message || 'erro desconhecido') + ').', { tone: 'error', ms: 8000 });
     } finally {
       publishBtn.disabled = false;
       updatePreviewContext();
@@ -1222,7 +1222,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       // entrar ou sair da equipe muda o que este aparelho pode fazer
       resyncProgress();
     } catch(err){
-      alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
+      showToast('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').', { tone: 'error', ms: 8000 });
     } finally {
       saveEventBtn.disabled = false;
     }
@@ -1329,7 +1329,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       const result = await resp.json();
       if(!resp.ok) throw new Error(result.error || 'Erro ao atualizar.');
     } catch(err){
-      alert('Não consegui atualizar essa permissão (' + (err.message || 'erro desconhecido') + ').');
+      showToast('Não consegui atualizar essa permissão (' + (err.message || 'erro desconhecido') + ').', { tone: 'error', ms: 8000 });
       select.value = canEdit ? 'viewer' : 'editor';
     } finally {
       select.disabled = false;
@@ -1451,12 +1451,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   }
 
   googleCalendarConnectBtn.addEventListener('click', async function(){
+    if(googleCalendarConnected && !await showConfirmDialog({ title: 'Desconectar Google?', message: 'Eventos já criados na agenda e pastas existentes no Drive continuarão lá, mas deixarão de ser atualizados automaticamente.', confirmLabel: 'Desconectar', tone: 'danger' })) return;
     googleCalendarConnectBtn.disabled = true;
     try {
       const token = await accessToken();
       if(!token) throw new Error('Sessão expirada. Faça login de novo.');
       if(googleCalendarConnected){
-        if(!confirm('Desconectar sua conta do Google? Os eventos já criados na sua agenda e as pastas já criadas no Drive continuam lá, mas deixam de ser atualizados automaticamente.')) return;
         const resp = await fetch('/api/google/disconnect', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
         if(!resp.ok) throw new Error('Erro ao desconectar.');
         googleCalendarConnected = false;
@@ -1468,7 +1468,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         window.location.href = result.url;
       }
     } catch(err){
-      alert('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').');
+      showToast('Não consegui atualizar (' + (err.message || 'erro desconhecido') + ').', { tone: 'error', ms: 8000 });
     } finally {
       googleCalendarConnectBtn.disabled = false;
     }
@@ -1976,7 +1976,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   function announceGoogleConnected(path){
     if(new URLSearchParams(window.location.search).get('google') !== 'conectado') return;
     history.replaceState({}, '', path);
-    alert('Google conectado! A partir de agora, seus eventos com data sincronizam automaticamente com o Calendar, e você já pode criar estruturas de pastas no Drive.');
+    showToast('Google conectado! Eventos com data sincronizam com o Calendar e você já pode criar pastas no Drive.', { tone: 'success', ms: 8000 });
   }
 
   // "Minha conta": conexão com o Google, quem pode adicionar eventos à
@@ -2069,7 +2069,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     const confirmMsg = isOwnerDelete
       ? 'Excluir "' + ev.event_title + '" permanentemente? Isso apaga o evento e todo o progresso registrado e não pode ser desfeito.'
       : 'Remover "' + ev.event_title + '" da sua lista? Dá pra salvar de novo depois, se ainda tiver o link.';
-    if(!confirm(confirmMsg)) return;
+    if(!await showConfirmDialog({ title: isOwnerDelete ? 'Excluir evento?' : 'Remover evento?', message: confirmMsg, confirmLabel: isOwnerDelete ? 'Excluir' : 'Remover', tone: 'danger' })) return;
 
     btn.disabled = true;
     try {
@@ -2081,7 +2081,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       historyEvents = historyEvents.filter(x => x.id !== id);
       renderHistoryList();
     } catch(err){
-      alert('Não consegui remover (' + (err.message || 'erro desconhecido') + ').');
+      showToast('Não consegui remover (' + (err.message || 'erro desconhecido') + ').', { tone: 'error', ms: 8000 });
       btn.disabled = false;
     }
   });
@@ -2379,7 +2379,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   }
 
-  document.addEventListener('click', function(e){
+  document.addEventListener('click', async function(e){
     const phasePill = e.target.closest('.phase-pill');
     if(phasePill){
       e.preventDefault();
@@ -2416,7 +2416,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         const phase = draft.phases[idx];
         const scenesInPhase = draft.scenes.filter(s => s.phase === phase.key);
         if(scenesInPhase.length){
-          const ok = confirm('Essa fase tem '+scenesInPhase.length+' cena(s). Remover mesmo assim? As cenas serão movidas para outra fase.');
+          const ok = await showConfirmDialog({ title: 'Remover fase?', message: 'Essa fase tem '+scenesInPhase.length+' cena(s). Elas serão movidas para outra fase.', confirmLabel: 'Remover fase', tone: 'danger' });
           if(!ok) return;
         }
         draft.phases.splice(idx, 1);
@@ -2750,9 +2750,12 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     appToast.hidden = true;
   }
 
-  function showToast(text, { actionLabel = '', onAction = null, ms = 6000 } = {}){
+  function showToast(text, { actionLabel = '', onAction = null, ms = 6000, tone = 'info' } = {}){
     clearTimeout(toastTimer);
     appToastText.textContent = text;
+    appToast.dataset.tone = tone;
+    appToast.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+    appToast.setAttribute('aria-live', tone === 'error' ? 'assertive' : 'polite');
     toastAction = onAction;
     appToastAction.hidden = !actionLabel;
     appToastAction.textContent = actionLabel;
@@ -2766,6 +2769,36 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     if(action) action();
   });
 
+  const appConfirmDialog = document.getElementById('appConfirmDialog');
+  const appConfirmTitle = document.getElementById('appConfirmTitle');
+  const appConfirmMessage = document.getElementById('appConfirmMessage');
+  const appConfirmCancelBtn = document.getElementById('appConfirmCancelBtn');
+  const appConfirmActionBtn = document.getElementById('appConfirmActionBtn');
+  let pendingConfirmation = null;
+  function showConfirmDialog({ title = 'Confirmar ação', message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', tone = 'info' }){
+    if(pendingConfirmation) return Promise.resolve(false);
+    const trigger = document.activeElement;
+    appConfirmTitle.textContent = title;
+    appConfirmMessage.textContent = message;
+    appConfirmCancelBtn.textContent = cancelLabel;
+    appConfirmActionBtn.textContent = confirmLabel;
+    appConfirmDialog.dataset.tone = tone;
+    appConfirmActionBtn.className = tone === 'danger' ? 'btn btn-danger' : 'btn btn-primary';
+    return new Promise(resolve => {
+      pendingConfirmation = result => {
+        pendingConfirmation = null;
+        if(appConfirmDialog.open && typeof appConfirmDialog.close === 'function') appConfirmDialog.close();
+        if(trigger && trigger.isConnected !== false && !trigger.disabled && trigger.focus) trigger.focus();
+        resolve(result);
+      };
+      appConfirmDialog.showModal();
+      appConfirmCancelBtn.focus();
+    });
+  }
+  appConfirmCancelBtn.addEventListener('click', () => { if(pendingConfirmation) pendingConfirmation(false); });
+  appConfirmActionBtn.addEventListener('click', () => { if(pendingConfirmation) pendingConfirmation(true); });
+  appConfirmDialog.addEventListener('cancel', event => { event.preventDefault(); if(pendingConfirmation) pendingConfirmation(false); });
+
   // ---------- reiniciar o checklist ----------
   // Apaga o progresso da equipe inteira, então: só dono e editores (o servidor
   // também recusa), confirmação com o que será apagado, só com internet e sem
@@ -2773,22 +2806,8 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   // pra desfazer na tela de quem reiniciou.
 
   const resetBtn = document.getElementById('resetBtn');
-  const resetDialog = document.getElementById('resetDialog');
-  const resetDialogText = document.getElementById('resetDialogText');
-  const resetConfirmBtn = document.getElementById('resetConfirmBtn');
-  const resetCancelBtn = document.getElementById('resetCancelBtn');
   const UNDO_RESET_MS = 30000;
   let lastLocalResetAt = 0;
-
-  function openResetDialog(){
-    if(typeof resetDialog.showModal === 'function') resetDialog.showModal();
-    else resetDialog.setAttribute('open', '');
-  }
-
-  function closeResetDialog(){
-    if(typeof resetDialog.close === 'function') resetDialog.close();
-    else resetDialog.removeAttribute('open');
-  }
 
   // O que existia antes do reinício, com os horários originais, pra "Desfazer".
   function takeProgressSnapshot(){
@@ -2834,19 +2853,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       showToast('Não há nada marcado pra reiniciar.', { ms: 4000 });
       return;
     }
-    resetDialogText.textContent = 'Isso apaga o progresso de ' + pluralize(scenes, 'cena com progresso', 'cenas com progresso') +
-      ' e ' + pluralize(missions, 'missão marcada', 'missões marcadas') + ', pra toda a equipe. Você terá 30 segundos pra desfazer.';
-    resetConfirmBtn.disabled = false;
-    openResetDialog();
-  });
-
-  resetCancelBtn.addEventListener('click', closeResetDialog);
-
-  resetConfirmBtn.addEventListener('click', async function(){
-    resetConfirmBtn.disabled = true;
+    const confirmed = await showConfirmDialog({ title: 'Reiniciar checklist?', message: 'Isso apaga o progresso de ' + pluralize(scenes, 'cena com progresso', 'cenas com progresso') +
+      ' e ' + pluralize(missions, 'missão marcada', 'missões marcadas') + ', pra toda a equipe. Você terá 30 segundos pra desfazer.', confirmLabel: 'Reiniciar', tone: 'danger' });
+    if(!confirmed) return;
     const snapshot = takeProgressSnapshot();
-    // marcado antes de enviar: o tempo real pode entregar o reinício antes da
-    // resposta, e quem reiniciou não deve ver o aviso "por alguém da equipe"
     lastLocalResetAt = Date.now();
     try {
       const resp = await postProgress({ eventId: currentEventId, action: 'reset', payload: {}, route: { kind: 'id', key: currentEventId, auth: true } });
@@ -2857,12 +2867,10 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
         throw error;
       }
       resetAllProgress();
-      closeResetDialog();
-      showToast('Checklist reiniciado.', { actionLabel: 'Desfazer', onAction: () => undoReset(snapshot), ms: UNDO_RESET_MS });
+      showToast('Checklist reiniciado.', { actionLabel: 'Desfazer', onAction: () => undoReset(snapshot), ms: UNDO_RESET_MS, tone: 'success' });
     } catch(err){
       lastLocalResetAt = 0;
-      closeResetDialog();
-      showToast((err && err.serverMessage) || 'Não consegui reiniciar agora. Nada foi apagado.', { ms: 8000 });
+      showToast((err && err.serverMessage) || 'Não consegui reiniciar agora. Nada foi apagado.', { ms: 8000, tone: 'error' });
     }
   });
 
@@ -2979,7 +2987,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
       // no resumo pós-reenvio, "já adicionados" de antes não interessam
       renderPublishSummary(Object.assign({}, summary, { existing: [] }), { canRetry: true });
     } catch(err){
-      alert('Não consegui reenviar (' + (err.message || 'erro desconhecido') + ').');
+      showToast('Não consegui reenviar (' + (err.message || 'erro desconhecido') + ').', { tone: 'error', ms: 8000 });
     } finally {
       retryInvitesBtn.disabled = false;
     }
@@ -3112,7 +3120,7 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
   // de revogar deve funcionar.
   async function shareRequest(method, suffix, confirmText){
     if(!editingEventId) return;
-    if(confirmText && !confirm(confirmText)) return;
+    if(confirmText && !await showConfirmDialog({ title: method === 'DELETE' ? 'Desativar link?' : 'Gerar novo link?', message: confirmText, confirmLabel: method === 'DELETE' ? 'Desativar link' : 'Gerar novo link', tone: 'danger' })) return;
     const status = document.getElementById('shareStatus');
     status.textContent = 'Atualizando…';
     try {
@@ -3194,9 +3202,9 @@ Também dá pra flagrar a qualquer momento, sem hora certa: alguém chorando de 
     }
   });
 
-  document.getElementById('conflictReloadBtn').addEventListener('click', function(){
+  document.getElementById('conflictReloadBtn').addEventListener('click', async function(){
     if(!conflictState) return;
-    if(!confirm('Carregar a versão mais recente? As alterações desta tela que não foram salvas serão descartadas (copie o rascunho antes, se precisar).')) return;
+    if(!await showConfirmDialog({ title: 'Carregar versão mais recente?', message: 'As alterações desta tela que não foram salvas serão descartadas. Copie o rascunho antes, se precisar.', confirmLabel: 'Carregar versão', tone: 'danger' })) return;
     const shareMode = draft.share_mode;
     draft = conflictState.serverDraft;
     draft.share_mode = shareMode;

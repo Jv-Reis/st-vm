@@ -23,7 +23,9 @@ export async function browser({
   config = VALID_CONFIG, routes, caches, supabaseGlobal = true, generated, online = true
 } = {}) {
   const elements = new Map(), calls = [], alerts = [], confirmations = [], clipboard = [], streams = [], documentHandlers = {};
+  const aliases = { resetDialog: 'appConfirmDialog', resetDialogText: 'appConfirmMessage', resetCancelBtn: 'appConfirmCancelBtn', resetConfirmBtn: 'appConfirmActionBtn' };
   function element(id) {
+    id = aliases[id] || id;
     if (!elements.has(id)) {
       const classes = new Set();
       elements.set(id, {
@@ -35,7 +37,7 @@ export async function browser({
       },
       addEventListener(type, fn) { this.handlers[type] = fn; },
       setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k] ?? null; }, removeAttribute(k) { delete this.attrs[k]; },
-      querySelectorAll() { return []; }, focus() {}, replaceChildren() {}, select() {}, scrollIntoView() {},
+      isConnected: true, querySelectorAll() { return []; }, focus() { context.document.activeElement = this; }, replaceChildren() {}, select() {}, scrollIntoView() {},
       showModal() { this.open = true; }, close() { this.open = false; }
       });
     }
@@ -86,7 +88,13 @@ export async function browser({
   await settle();
   return {
     element, calls, alerts, confirmations, clipboard, location, settle, storage, sessionState, streams, navigator: context.navigator,
-    click: async id => { await element(id).handlers.click({ target: element(id), preventDefault() {} }); await settle(); },
+    click: async id => {
+      const result = element(id).handlers.click({ target: element(id), preventDefault() {} });
+      await settle();
+      if(element('appConfirmDialog').open) return;
+      await result;
+      await settle();
+    },
     // clique delegado no document (botões gerados com data-action)
     clickAction: async (dataset, extra = {}, selector = '[data-action]') => {
       const button = { dataset, getAttribute: k => extra[k] ?? null, setAttribute(k, v) { extra[k] = v; }, closest: () => null, focus() {} };

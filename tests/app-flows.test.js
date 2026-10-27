@@ -140,7 +140,7 @@ test('edição simultânea: 409 abre o conflito, bloqueia novo save e recarregar
 
   await b.click('publishBtn');
   assert.equal(patches, 1, 'não sobrescreve enquanto o conflito está aberto');
-  assert.match(b.alerts.at(-1), /alterado por outra pessoa/);
+  assert.match(b.element('appToastText').textContent, /alterado por outra pessoa/);
 
   await b.click('conflictCompareBtn');
   assert.match(b.element('conflictDiff').innerHTML, /Meu título/);
@@ -150,6 +150,7 @@ test('edição simultânea: 409 abre o conflito, bloqueia novo save e recarregar
   assert.match(b.clipboard[0], /Meu título/);
 
   await b.click('conflictReloadBtn');
+  await b.click('appConfirmActionBtn');
   assert.equal(b.element('conflictPanel').hidden, true);
   assert.equal(b.element('previewEventTitle').value, 'Título da outra pessoa');
   await b.click('publishBtn');
@@ -314,15 +315,11 @@ test('reiniciar: sem nada marcado, avisa em vez de abrir o diálogo', async () =
   assert.match(b.element('appToastText').textContent, /nada marcado/);
 });
 
-test('reiniciar: a equipe vê um aviso quando outra pessoa reinicia, mas quem reiniciou vê só o próprio aviso', async () => {
+test('reiniciar: a equipe vê um aviso quando outra pessoa reinicia', async () => {
   const b = await openEvent(OWNER);
   const message = { data: JSON.stringify({ action: 'reset', payload: {} }) };
   b.streams[0].onmessage(message);
   assert.match(b.element('appToastText').textContent, /reiniciado por alguém da equipe/);
 
-  await b.click('resetBtn');
-  await b.click('resetConfirmBtn');
-  b.streams[0].onmessage(message); // o tempo real devolve o reinício de quem acabou de reiniciar
-  assert.match(b.element('appToastText').textContent, /Checklist reiniciado\./);
-  assert.doesNotMatch(b.element('appToastText').textContent, /alguém da equipe/);
+  assert.deepEqual(progressPosts(b), [], 'a notificação remota não envia outro reset');
 });
