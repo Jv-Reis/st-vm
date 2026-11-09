@@ -94,7 +94,15 @@ app.get('/vendor/supabase.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd', 'supabase.js'));
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// O app (tela única servida por index.html) fica fora do Google: só a landing
+// deve aparecer na busca, e links de evento nunca devem ser indexados. A
+// política de privacidade (arquivo separado) continua indexável.
+const NOINDEX = 'noindex';
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    if (path.basename(filePath) === 'index.html') res.setHeader('X-Robots-Tag', NOINDEX);
+  }
+}));
 
 const rateLimit = makeRateLimiter(
   15 * 60 * 1000, 10,
@@ -1390,6 +1398,7 @@ app.get('/api/share/:token/stream', async (req, res) => {
 });
 
 function sendIndex(req, res) {
+  res.setHeader('X-Robots-Tag', NOINDEX);
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 }
 

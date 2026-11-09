@@ -103,3 +103,10 @@ test('prévia de compartilhamento: tags Open Graph com imagem 1200x630, sem dado
   assert.equal(png.readUInt32BE(20), 630, 'altura');
   assert.ok(png.length < 300 * 1024, 'abaixo do limite de prévia do WhatsApp');
 });
+
+test('app fora do Google (noindex); política de privacidade continua indexável', async () => {
+  const app = await read('public/index.html');
+  assert.match(app, /<meta name="robots" content="noindex">/);
+  const policy = await read('public/privacidade.html');
+  assert.doesNotMatch(policy, /noindex/);
+});
